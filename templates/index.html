@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Required Data Ingestion UI</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-slate-900 text-slate-100 p-8 min-h-screen">
+
+    <div class="max-w-6xl mx-auto space-y-6">
+        <h1 class="text-2xl font-bold text-emerald-400"> ADD THESE FILES </h1>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+            <!-- 1. MI (Parquet) -->
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                <h3 class="text-sm font-bold text-slate-200">1. MI </h3>
+                <span class="text-xs text-blue-400 mb-2 block">Format: PARQUET</span>
+                <form hx-post="/ingest/wfm_dump" hx-target="#status-wfm" enctype="multipart/form-data">
+                    <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
+              file:mr-4 file:py-2 file:px-4
+              file:rounded-md file:border-0
+              file:text-xs file:font-semibold
+              file:bg-slate-700 file:text-slate-200
+              hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
+                    <button type="submit" class="bg-blue-600 px-3 py-1 rounded text-xs font-semibold">Load
+                        Parquet</button>
+                </form>
+                <div id="status-wfm" class="mt-2"></div>
+            </div>
+
+            <!-- 1. NSC DUMP (Parquet) -->
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                <h3 class="text-sm font-bold text-slate-200">2. NSC </h3>
+                <span class="text-xs text-blue-400 mb-2 block">Format: PARQUET</span>
+                <form hx-post="/ingest/wfm_dump" hx-target="#status-wfm" enctype="multipart/form-data">
+                    <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
+              file:mr-4 file:py-2 file:px-4
+              file:rounded-md file:border-0
+              file:text-xs file:font-semibold
+              file:bg-slate-700 file:text-slate-200
+              hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
+                    <button type="submit" class="bg-blue-600 px-3 py-1 rounded text-xs font-semibold">Load
+                        Parquet</button>
+                </form>
+                <div id="status-wfm" class="mt-2"></div>
+            </div>
+
+            <!-- 1. SSR (Parquet) -->
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                <h3 class="text-sm font-bold text-slate-200">3. SSR </h3>
+                <span class="text-xs text-blue-400 mb-2 block">Format: PARQUET</span>
+                <form hx-post="/ingest/wfm_dump" hx-target="#status-wfm" enctype="multipart/form-data">
+                    <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
+              file:mr-4 file:py-2 file:px-4
+              file:rounded-md file:border-0
+              file:text-xs file:font-semibold
+              file:bg-slate-700 file:text-slate-200
+              hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
+                    <button type="submit" class="bg-blue-600 px-3 py-1 rounded text-xs font-semibold">Load
+                        Parquet</button>
+                </form>
+                <div id="status-wfm" class="mt-2"></div>
+            </div>
+
+            <!-- 2. MDM (CSV / Folder) -->
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                <h3 class="text-sm font-bold text-slate-200">4. MDM</h3>
+                <span class="text-xs text-emerald-400 mb-2 block">Format: CSV / Folder</span>
+                <form hx-post="/ingest/mdm" hx-target="#status-mdm">
+                    <input type="text" name="folder_path" placeholder="Folder Path (e.g. C:\data\mdm)"
+                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2">
+                    <button type="submit" class="bg-emerald-600 px-3 py-1 rounded text-xs font-semibold">Load
+                        Folder</button>
+                </form>
+                <div id="status-mdm" class="mt-2"></div>
+            </div>
+
+            <!-- 3. MDS (CSV / Folder) -->
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                <h3 class="text-sm font-bold text-slate-200">5. MDS</h3>
+                <span class="text-xs text-emerald-400 mb-2 block">Format: CSV / Folder</span>
+                <form hx-post="/ingest/mds" hx-target="#status-mds">
+                    <input type="text" name="folder_path" placeholder="Folder Path..."
+                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2">
+                    <button type="submit" class="bg-emerald-600 px-3 py-1 rounded text-xs font-semibold">Load
+                        Folder</button>
+                </form>
+                <div id="status-mds" class="mt-2"></div>
+            </div>
+
+            <!-- 4. CP (CSV / Folder) -->
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                <h3 class="text-sm font-bold text-slate-200">6. CP</h3>
+                <span class="text-xs text-emerald-400 mb-2 block">Format: CSV / Folder</span>
+                <form hx-post="/ingest/cp" hx-target="#status-cp">
+                    <input type="text" name="folder_path" placeholder="Folder Path..."
+                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2">
+                    <button type="submit" class="bg-emerald-600 px-3 py-1 rounded text-xs font-semibold">Load
+                        Folder</button>
+                </form>
+                <div id="status-cp" class="mt-2"></div>
+            </div>
+
+            <!-- 5. SAT COMBINED (Parquet) -->
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                <h3 class="text-sm font-bold text-slate-200">7. SAT COMBINED</h3>
+                <span class="text-xs text-blue-400 mb-2 block">Format: PARQUET</span>
+                <form hx-post="/ingest/sat_combined" hx-target="#status-sat" enctype="multipart/form-data">
+                    <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
+              file:mr-4 file:py-2 file:px-4
+              file:rounded-md file:border-0
+              file:text-xs file:font-semibold
+              file:bg-slate-700 file:text-slate-200
+              hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
+                    <button type="submit" class="bg-blue-600 px-3 py-1 rounded text-xs font-semibold">Load
+                        Parquet</button>
+                </form>
+                <div id="status-sat" class="mt-2"></div>
+            </div>
+
+            <!-- 6. FIT COMBINED (Parquet) -->
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                <h3 class="text-sm font-bold text-slate-200">8. FIT COMBINED</h3>
+                <span class="text-xs text-blue-400 mb-2 block">Format: PARQUET</span>
+                <form hx-post="/ingest/fit_combined" hx-target="#status-fit" enctype="multipart/form-data">
+                       <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
+              file:mr-4 file:py-2 file:px-4
+              file:rounded-md file:border-0
+              file:text-xs file:font-semibold
+              file:bg-slate-700 file:text-slate-200
+              hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
+                    <button type="submit" class="bg-blue-600 px-3 py-1 rounded text-xs font-semibold">Load
+                        Parquet</button>
+                </form>
+                <div id="status-fit" class="mt-2"></div>
+            </div>
+
+            <!-- 7. LP (CSV / Folder / Date-wise) -->
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                <h3 class="text-sm font-bold text-slate-200">9. LP</h3>
+                <span class="text-xs text-purple-400 mb-2 block">Format: Date-Wise CSV Folder</span>
+                <form hx-post="/ingest/lp" hx-target="#status-lp">
+                    <input type="text" name="folder_path" placeholder="Date-Wise Folder Path..."
+                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2">
+                    <button type="submit" class="bg-purple-600 px-3 py-1 rounded text-xs font-semibold">Load LP
+                        Folders</button>
+                </form>
+                <div id="status-lp" class="mt-2"></div>
+            </div>
+
+            <!-- 8. DP (CSV / Folder / Date-wise) -->
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                <h3 class="text-sm font-bold text-slate-200">10. DP</h3>
+                <span class="text-xs text-purple-400 mb-2 block">Format: Date-Wise CSV Folder</span>
+                <form hx-post="/ingest/dp" hx-target="#status-dp">
+                    <input type="text" name="folder_path" placeholder="Date-Wise Folder Path..."
+                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2">
+                    <button type="submit" class="bg-purple-600 px-3 py-1 rounded text-xs font-semibold">Load DP
+                        Folders</button>
+                </form>
+                <div id="status-dp" class="mt-2"></div>
+            </div>
+
+            <!-- 9. BP (CSV / Folder / Date-wise) -->
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                <h3 class="text-sm font-bold text-slate-200">11. BP</h3>
+                <span class="text-xs text-purple-400 mb-2 block">Format: Date-Wise CSV Folder</span>
+                <form hx-post="/ingest/bp" hx-target="#status-bp">
+                    <input type="text" name="folder_path" placeholder="Date-Wise Folder Path..."
+                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2">
+                    <button type="submit" class="bg-purple-600 px-3 py-1 rounded text-xs font-semibold">Load BP
+                        Folders</button>
+                </form>
+                <div id="status-bp" class="mt-2"></div>
+            </div>
+
+        </div>
+
+        <!-- Audit Execution --->
+        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 mt-6">
+            <button hx-get="/run-audit" hx-target="#audit-output"
+                class="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold px-6 py-2 rounded-lg text-sm">
+                Run Cross-Table Reconciliation Audit
+            </button>
+            <div id="audit-output" class="mt-4"></div>
+        </div>
+
+    </div>
+
+</body>
+
+</html>
