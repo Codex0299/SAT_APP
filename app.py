@@ -15,18 +15,18 @@ conn = duckdb.connect(database=":memory:")
 
 # Map of exact required datasets and their schema tables
 DATASET_CONFIG = {
-    "MI": {"table": "mi", "type": "parquet"},
-    "NSC": {"table": "nsc", "type": "parquet"},
-    "SSR": {"table": "ssr", "type": "parquet"},
-    "mdm": {"table": "mdm", "type": "csv_folder"},
-    "mds": {"table": "mds", "type": "csv_folder"},
-    "cp": {"table": "cp", "type": "csv_folder"},
+    "MI": {"table": "MI", "type": "parquet"},
+    "NSC": {"table": "NSC", "type": "parquet"},
+    "SSR": {"table": "SSR", "type": "parquet"},
+    "MDM": {"table": "MDM", "type": "csv_folder"},
+    "MDS": {"table": "MDS", "type": "csv_folder"},
+    "CP": {"table": "CP", "type": "csv_folder"},
     "sat_combined": {"table": "sat", "type": "parquet"},
     "fit_combined": {"table": "fit", "type": "parquet"},
     "lp": {"table": "lp", "type": "datewise_csv"},
     "dp": {"table": "dp", "type": "datewise_csv"},
     "bp": {"table": "bp", "type": "datewise_csv"},
-     }
+}
 
 
 # ==========================================
@@ -43,7 +43,7 @@ def ingest_file_or_folder(
 
     conn.execute(f"DROP TABLE IF EXISTS {table_name}")
 
-    # 1. PARQUET FILES (WFM, SAT COMBINED, FIT COMBINED)
+    # 1. PARQUET FILES (WFM, sat COMBINED, fit COMBINED)
     if config["type"] == "parquet" and file_path:
         conn.execute(
             f"CREATE TABLE {table_name} AS SELECT * FROM read_parquet('{file_path}')"
@@ -68,15 +68,15 @@ def ingest_file_or_folder(
 
 def build_reconciliation_output():
     """Backend Logic: Performs cross-table audit across loaded dumps without exposing SQL to UI."""
-    # Example logic joining SAT, FIT, and LP/DP/BP tables
+    # Example logic joining sat, fit, and LP/DP/BP tables
     query = """
       
-CREATE or replace TABLE wfm AS
+CREATE or replace TABLE WFM AS
 SELECT 
        "Consumer Number" as CONSUMER_NUMBER,
        "SSR_New Meter Number"as METER_NUMBER,
        
-FROM ssr
+FROM SSR
 WHERE "MDM Status" = 'Approve'; 
 
 
@@ -90,25 +90,25 @@ WHERE NOT EXISTS (
     FROM WFM
     WHERE WFM.CONSUMER_NUMBER = NSC.permanent_consumer_no
       AND WFM.METER_NUMBER = NSC.new_meter_number
-      AND api_mdm_status = 'Approve'
+      AND api_MDM_status = 'Approve'
     
 );
 
 
 INSERT INTO WFM (CONSUMER_NUMBER, METER_NUMBER)
 SELECT
-    mi."Consumer Number",
-    mi."Consumer Number"
+    MI."Consumer Number",
+    MI."Consumer Number"
 FROM MI
 WHERE NOT EXISTS (
     SELECT 1
     FROM WFM
-    WHERE WFM.CONSUMER_NUMBER = mi."Consumer Number"
-      AND WFM.METER_NUMBER =  mi."Consumer Number"
+    WHERE WFM.CONSUMER_NUMBER = MI."Consumer Number"
+      AND WFM.METER_NUMBER =  MI."Consumer Number"
       AND "API MDM Status" = 'Approve'
 );
 
---- indexing for sat table to optimize deletion queries
+--- indexing for sat table to optiMIze deletion queries
 
 CREATE INDEX idx_sat_consumer
 ON sat ("consumer number");
@@ -128,7 +128,7 @@ OR EXISTS (
     FROM sat s
     WHERE s."meter no" = w.METER_NUMBER
 );
- --- indexing for fit table to optimize deletion queries
+ --- indexing for fit table to optiMIze deletion queries
 CREATE INDEX idx_fit_consumer
 ON fit ("consumer number");
 
@@ -149,58 +149,85 @@ OR EXISTS (
     WHERE s."meter no" = w.METER_NUMBER
 );
 
--- creating index for mdm table to optimize deletion queries
-CREATE INDEX idx_mdm_consumer
-ON mdm ("ConsumerNumber");
+-- creating index for MDM table to optiMIze deletion queries
+CREATE INDEX idx_MDM_consumer
+ON MDM ("ConsumerNumber");
 
-CREATE INDEX idx_mdm_meter
-ON mdm ("DeviceSerialNumber");
+CREATE INDEX idx_MDM_meter
+ON MDM ("DeviceSerialNumber");
 
 
--- delete from wfm where consumer number and meter number does not exist in mdm table
+-- delete from wfm where consumer number and meter number does not exist in MDM table
 DELETE FROM WFM w
 WHERE not  EXISTS (
     SELECT 1
-    FROM mdm s
+    FROM MDM s
     WHERE s."ConsumerNumber" = w.CONSUMER_NUMBER
 
     and  s."DeviceSerialNumber" = w.METER_NUMBER
 );
 
 
-CREATE INDEX idx_mds_consumer
-ON mds ("Consumer No");
+CREATE INDEX idx_MDS_consumer
+ON MDS ("Consumer No");
 
-CREATE INDEX idx_mds_meter
-ON mds ("Meter No");
+CREATE INDEX idx_MDS_meter
+ON MDS ("Meter No");
 
 
 DELETE FROM WFM w
 WHERE not  EXISTS (
     SELECT 1
-    FROM mds s
+    FROM MDS s
     WHERE s."Consumer No" = w.CONSUMER_NUMBER
 
     and  s."Meter No" = w.METER_NUMBER
 );
--- creating index for cp table to optimize deletion queries
-CREATE INDEX idx_cp_consumer
-ON cp ("consumer_no");
+-- creating index for CP table to optiMIze deletion queries
+CREATE INDEX idx_CP_consumer
+ON CP ("consumer_no");
 
-CREATE INDEX idx_cp_meter
-ON cp ("meter_no");
+CREATE INDEX idx_CP_meter
+ON CP ("meter_no");
 
--- delete from wfm where consumer number and meter number does not exist in cp table
+-- delete from wfm where consumer number and meter number does not exist in CP table
 DELETE FROM WFM w
 WHERE not  EXISTS (
     SELECT 1
-    FROM cp s
+    FROM CP s
     WHERE s."consumer_no" = w.CONSUMER_NUMBER
 
     and  s."meter_no" = w.METER_NUMBER
 );
 
+CREATE OR REPLACE TABLE LP_clean AS
+SELECT 
+    *, 
+    
+    -- Removes 'ISK', 'LNT', 'ISK-', 'LNT-', 'ISK_', 'LNT_' from the start of the text
+    REGEXP_REPLACE(devicename, '^(ISK|LNT)[-_]?i?', '', 'i') AS meter_no
 
+FROM lp;
+
+
+CREATE OR REPLACE TABLE DP_clean AS
+SELECT 
+    *, 
+    
+    -- Removes 'ISK', 'LNT', 'ISK-', 'LNT-', 'ISK_', 'LNT_' from the start of the text
+    REGEXP_REPLACE(devicename, '^(ISK|LNT)[-_]?i?', '', 'i') AS meter_no
+
+FROM dp;
+
+
+CREATE OR REPLACE TABLE BP_clean AS
+SELECT 
+    *, 
+    
+    -- Removes 'ISK', 'LNT', 'ISK-', 'LNT-', 'ISK_', 'LNT_' from the start of the text
+    REGEXP_REPLACE(devicename, '^(ISK|LNT)[-_]?i?', '', 'i') AS meter_no
+
+FROM bp;
 
 
 
@@ -256,7 +283,7 @@ async def handle_ingestion(dataset_key: str, request: Request):
     count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
 
     return f"""
-    <div class="text-xs text-emerald-400 font-semibold">
+    <div class="text-xs text-emerald-400 font-seMIbold">
         ✅ Ingested into table <code>{table_name}</code> ({count:,} records)
     </div>
     """
