@@ -6,191 +6,281 @@
     <title>Required Data Ingestion UI</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .htmx-indicator {
+            display: none;
+        }
+
+        .htmx-request .htmx-indicator {
+            display: block;
+        }
+
+        .htmx-request.htmx-indicator {
+            display: block;
+        }
+    </style>
 </head>
 
 <body class="bg-slate-900 text-slate-100 p-8 min-h-screen">
 
     <div class="max-w-6xl mx-auto space-y-6">
-        <h1 class="text-2xl font-bold text-emerald-400"> ADD THESE FILES </h1>
+        <h1 class="text-2xl font-bold text-emerald-400">ADD THESE FILES</h1>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 
             <!-- 1. MI (Parquet) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                <h3 class="text-sm font-bold text-slate-200">1. MI </h3>
-                <span class="text-xs text-blue-400 mb-2 block">Format: PARQUET</span>
-                <form hx-post="/ingest/wfm_dump" hx-target="#status-wfm" enctype="multipart/form-data">
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 space-y-2">
+                <h3 class="text-sm font-bold text-slate-200">1. MI</h3>
+                <span class="text-xs text-blue-400 block">Format: PARQUET</span>
+                <form hx-post="/ingest/MI" hx-target="#status-mi" hx-encoding="multipart/form-data"
+                    hx-indicator="#loading-mi" class="space-y-2">
                     <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
-              file:mr-4 file:py-2 file:px-4
-              file:rounded-md file:border-0
-              file:text-xs file:font-semibold
-              file:bg-slate-700 file:text-slate-200
-              hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
-                    <button type="submit" class="bg-blue-600 px-3 py-1 rounded text-xs font-semibold">Load
-                        Parquet</button>
+                      file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0
+                      file:text-xs file:font-semibold file:bg-slate-700 file:text-slate-200
+                      hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
+                    <button type="submit"
+                        class="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
+                        Load Parquet
+                    </button>
                 </form>
-                <div id="status-wfm" class="mt-2"></div>
+                <div id="loading-mi" class="htmx-indicator">
+                    <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+                        <span>Uploading...</span>
+                        <span class="progress-percent">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-900 rounded-full h-1 overflow-hidden">
+                        <div class="progress-bar bg-blue-500 h-1 w-0 transition-all duration-150"></div>
+                    </div>
+                </div>
+                <div id="status-mi" class="mt-2"></div>
             </div>
 
-            <!-- 1. NSC DUMP (Parquet) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                <h3 class="text-sm font-bold text-slate-200">2. NSC </h3>
-                <span class="text-xs text-blue-400 mb-2 block">Format: PARQUET</span>
-                <form hx-post="/ingest/wfm_dump" hx-target="#status-wfm" enctype="multipart/form-data">
+            <!-- 2. NSC (Parquet) -->
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 space-y-2">
+                <h3 class="text-sm font-bold text-slate-200">2. NSC</h3>
+                <span class="text-xs text-blue-400 block">Format: PARQUET</span>
+                <form hx-post="/ingest/NSC" hx-target="#status-nsc" hx-encoding="multipart/form-data"
+                    hx-indicator="#loading-nsc" class="space-y-2">
                     <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
-              file:mr-4 file:py-2 file:px-4
-              file:rounded-md file:border-0
-              file:text-xs file:font-semibold
-              file:bg-slate-700 file:text-slate-200
-              hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
-                    <button type="submit" class="bg-blue-600 px-3 py-1 rounded text-xs font-semibold">Load
-                        Parquet</button>
+                      file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0
+                      file:text-xs file:font-semibold file:bg-slate-700 file:text-slate-200
+                      hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
+                    <button type="submit"
+                        class="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
+                        Load Parquet
+                    </button>
                 </form>
-                <div id="status-wfm" class="mt-2"></div>
+                <div id="loading-nsc" class="htmx-indicator">
+                    <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+                        <span>Uploading...</span>
+                        <span class="progress-percent">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-900 rounded-full h-1 overflow-hidden">
+                        <div class="progress-bar bg-blue-500 h-1 w-0 transition-all duration-150"></div>
+                    </div>
+                </div>
+                <div id="status-nsc" class="mt-2"></div>
             </div>
 
-            <!-- 1. SSR (Parquet) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                <h3 class="text-sm font-bold text-slate-200">3. SSR </h3>
-                <span class="text-xs text-blue-400 mb-2 block">Format: PARQUET</span>
-                <form hx-post="/ingest/wfm_dump" hx-target="#status-wfm" enctype="multipart/form-data">
+            <!-- 3. SSR (Parquet) -->
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 space-y-2">
+                <h3 class="text-sm font-bold text-slate-200">3. SSR</h3>
+                <span class="text-xs text-blue-400 block">Format: PARQUET</span>
+                <form hx-post="/ingest/SSR" hx-target="#status-ssr" hx-encoding="multipart/form-data"
+                    hx-indicator="#loading-ssr" class="space-y-2">
                     <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
-              file:mr-4 file:py-2 file:px-4
-              file:rounded-md file:border-0
-              file:text-xs file:font-semibold
-              file:bg-slate-700 file:text-slate-200
-              hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
-                    <button type="submit" class="bg-blue-600 px-3 py-1 rounded text-xs font-semibold">Load
-                        Parquet</button>
+                      file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0
+                      file:text-xs file:font-semibold file:bg-slate-700 file:text-slate-200
+                      hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
+                    <button type="submit"
+                        class="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
+                        Load Parquet
+                    </button>
                 </form>
-                <div id="status-wfm" class="mt-2"></div>
+                <div id="loading-ssr" class="htmx-indicator">
+                    <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+                        <span>Uploading...</span>
+                        <span class="progress-percent">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-900 rounded-full h-1 overflow-hidden">
+                        <div class="progress-bar bg-blue-500 h-1 w-0 transition-all duration-150"></div>
+                    </div>
+                </div>
+                <div id="status-ssr" class="mt-2"></div>
             </div>
 
-            <!-- 2. MDM (CSV / Folder) -->
+            <!-- 4. MDM (CSV / Folder) -->
             <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
                 <h3 class="text-sm font-bold text-slate-200">4. MDM</h3>
                 <span class="text-xs text-emerald-400 mb-2 block">Format: CSV / Folder</span>
-                <form hx-post="/ingest/mdm" hx-target="#status-mdm">
+                <form hx-post="/ingest/MDM" hx-target="#status-mdm">
                     <input type="text" name="folder_path" placeholder="Folder Path (e.g. C:\data\mdm)"
-                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2">
-                    <button type="submit" class="bg-emerald-600 px-3 py-1 rounded text-xs font-semibold">Load
-                        Folder</button>
+                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2 focus:outline-none focus:border-emerald-500">
+                    <button type="submit"
+                        class="bg-emerald-600 hover:bg-emerald-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
+                        Load Folder
+                    </button>
                 </form>
                 <div id="status-mdm" class="mt-2"></div>
             </div>
 
-            <!-- 3. MDS (CSV / Folder) -->
+            <!-- 5. MDS (CSV / Folder) -->
             <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
                 <h3 class="text-sm font-bold text-slate-200">5. MDS</h3>
                 <span class="text-xs text-emerald-400 mb-2 block">Format: CSV / Folder</span>
-                <form hx-post="/ingest/mds" hx-target="#status-mds">
+                <form hx-post="/ingest/MDS" hx-target="#status-mds">
                     <input type="text" name="folder_path" placeholder="Folder Path..."
-                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2">
-                    <button type="submit" class="bg-emerald-600 px-3 py-1 rounded text-xs font-semibold">Load
-                        Folder</button>
+                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2 focus:outline-none focus:border-emerald-500">
+                    <button type="submit"
+                        class="bg-emerald-600 hover:bg-emerald-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
+                        Load Folder
+                    </button>
                 </form>
                 <div id="status-mds" class="mt-2"></div>
             </div>
 
-            <!-- 4. CP (CSV / Folder) -->
+            <!-- 6. CP (CSV / Folder) -->
             <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
                 <h3 class="text-sm font-bold text-slate-200">6. CP</h3>
                 <span class="text-xs text-emerald-400 mb-2 block">Format: CSV / Folder</span>
-                <form hx-post="/ingest/cp" hx-target="#status-cp">
+                <form hx-post="/ingest/CP" hx-target="#status-cp">
                     <input type="text" name="folder_path" placeholder="Folder Path..."
-                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2">
-                    <button type="submit" class="bg-emerald-600 px-3 py-1 rounded text-xs font-semibold">Load
-                        Folder</button>
+                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2 focus:outline-none focus:border-emerald-500">
+                    <button type="submit"
+                        class="bg-emerald-600 hover:bg-emerald-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
+                        Load Folder
+                    </button>
                 </form>
                 <div id="status-cp" class="mt-2"></div>
             </div>
 
-            <!-- 5. SAT COMBINED (Parquet) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+            <!-- 7. SAT COMBINED (Parquet) -->
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 space-y-2">
                 <h3 class="text-sm font-bold text-slate-200">7. SAT COMBINED</h3>
-                <span class="text-xs text-blue-400 mb-2 block">Format: PARQUET</span>
-                <form hx-post="/ingest/sat_combined" hx-target="#status-sat" enctype="multipart/form-data">
+                <span class="text-xs text-blue-400 block">Format: PARQUET</span>
+                <form hx-post="/ingest/sat_combined" hx-target="#status-sat" hx-encoding="multipart/form-data"
+                    hx-indicator="#loading-sat" class="space-y-2">
                     <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
-              file:mr-4 file:py-2 file:px-4
-              file:rounded-md file:border-0
-              file:text-xs file:font-semibold
-              file:bg-slate-700 file:text-slate-200
-              hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
-                    <button type="submit" class="bg-blue-600 px-3 py-1 rounded text-xs font-semibold">Load
-                        Parquet</button>
+                      file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0
+                      file:text-xs file:font-semibold file:bg-slate-700 file:text-slate-200
+                      hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
+                    <button type="submit"
+                        class="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
+                        Load Parquet
+                    </button>
                 </form>
+                <div id="loading-sat" class="htmx-indicator">
+                    <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+                        <span>Uploading...</span>
+                        <span class="progress-percent">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-900 rounded-full h-1 overflow-hidden">
+                        <div class="progress-bar bg-blue-500 h-1 w-0 transition-all duration-150"></div>
+                    </div>
+                </div>
                 <div id="status-sat" class="mt-2"></div>
             </div>
 
-            <!-- 6. FIT COMBINED (Parquet) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+            <!-- 8. FIT COMBINED (Parquet) -->
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 space-y-2">
                 <h3 class="text-sm font-bold text-slate-200">8. FIT COMBINED</h3>
-                <span class="text-xs text-blue-400 mb-2 block">Format: PARQUET</span>
-                <form hx-post="/ingest/fit_combined" hx-target="#status-fit" enctype="multipart/form-data">
-                       <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
-              file:mr-4 file:py-2 file:px-4
-              file:rounded-md file:border-0
-              file:text-xs file:font-semibold
-              file:bg-slate-700 file:text-slate-200
-              hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
-                    <button type="submit" class="bg-blue-600 px-3 py-1 rounded text-xs font-semibold">Load
-                        Parquet</button>
+                <span class="text-xs text-blue-400 block">Format: PARQUET</span>
+                <form hx-post="/ingest/fit_combined" hx-target="#status-fit" hx-encoding="multipart/form-data"
+                    hx-indicator="#loading-fit" class="space-y-2">
+                    <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
+                      file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0
+                      file:text-xs file:font-semibold file:bg-slate-700 file:text-slate-200
+                      hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
+                    <button type="submit"
+                        class="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
+                        Load Parquet
+                    </button>
                 </form>
+                <div id="loading-fit" class="htmx-indicator">
+                    <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+                        <span>Uploading...</span>
+                        <span class="progress-percent">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-900 rounded-full h-1 overflow-hidden">
+                        <div class="progress-bar bg-blue-500 h-1 w-0 transition-all duration-150"></div>
+                    </div>
+                </div>
                 <div id="status-fit" class="mt-2"></div>
             </div>
 
-            <!-- 7. LP (CSV / Folder / Date-wise) -->
+            <!-- 9. LP (CSV / Folder / Date-wise) -->
             <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
                 <h3 class="text-sm font-bold text-slate-200">9. LP</h3>
                 <span class="text-xs text-purple-400 mb-2 block">Format: Date-Wise CSV Folder</span>
                 <form hx-post="/ingest/lp" hx-target="#status-lp">
                     <input type="text" name="folder_path" placeholder="Date-Wise Folder Path..."
-                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2">
-                    <button type="submit" class="bg-purple-600 px-3 py-1 rounded text-xs font-semibold">Load LP
-                        Folders</button>
+                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2 focus:outline-none focus:border-purple-500">
+                    <button type="submit"
+                        class="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
+                        Load LP Folders
+                    </button>
                 </form>
                 <div id="status-lp" class="mt-2"></div>
             </div>
 
-            <!-- 8. DP (CSV / Folder / Date-wise) -->
+            <!-- 10. DP (CSV / Folder / Date-wise) -->
             <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
                 <h3 class="text-sm font-bold text-slate-200">10. DP</h3>
                 <span class="text-xs text-purple-400 mb-2 block">Format: Date-Wise CSV Folder</span>
                 <form hx-post="/ingest/dp" hx-target="#status-dp">
                     <input type="text" name="folder_path" placeholder="Date-Wise Folder Path..."
-                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2">
-                    <button type="submit" class="bg-purple-600 px-3 py-1 rounded text-xs font-semibold">Load DP
-                        Folders</button>
+                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2 focus:outline-none focus:border-purple-500">
+                    <button type="submit"
+                        class="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
+                        Load DP Folders
+                    </button>
                 </form>
                 <div id="status-dp" class="mt-2"></div>
             </div>
 
-            <!-- 9. BP (CSV / Folder / Date-wise) -->
+            <!-- 11. BP (CSV / Folder / Date-wise) -->
             <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
                 <h3 class="text-sm font-bold text-slate-200">11. BP</h3>
                 <span class="text-xs text-purple-400 mb-2 block">Format: Date-Wise CSV Folder</span>
                 <form hx-post="/ingest/bp" hx-target="#status-bp">
                     <input type="text" name="folder_path" placeholder="Date-Wise Folder Path..."
-                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2">
-                    <button type="submit" class="bg-purple-600 px-3 py-1 rounded text-xs font-semibold">Load BP
-                        Folders</button>
+                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2 focus:outline-none focus:border-purple-500">
+                    <button type="submit"
+                        class="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
+                        Load BP Folders
+                    </button>
                 </form>
                 <div id="status-bp" class="mt-2"></div>
             </div>
 
         </div>
 
-        <!-- Audit Execution --->
+        <!-- Audit Execution -->
         <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 mt-6">
-            <button hx-get="/run-audit" hx-target="#audit-output"
-                class="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold px-6 py-2 rounded-lg text-sm">
-                Run Cross-Table Reconciliation Audit
+            <button hx-get="/run-audit" hx-target="#audit-output" hx-indicator="#audit-spinner"
+                class="bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold px-6 py-2.5 rounded-lg text-sm transition flex items-center gap-2">
+                <span>Run Cross-Table Reconciliation Audit</span>
+                <span id="audit-spinner" class="htmx-indicator animate-spin text-slate-900">🌀</span>
             </button>
             <div id="audit-output" class="mt-4"></div>
         </div>
 
     </div>
 
+    <!-- Script to track real-time upload progress percentages -->
+    <script>
+        document.addEventListener('htmx:xhr:progress', function (evt) {
+            if (evt.detail.lengthComputable) {
+                let percent = Math.round((evt.detail.loaded / evt.detail.total) * 100);
+                let container = evt.detail.elt;
+                let progressBar = container.querySelector('.progress-bar');
+                let progressText = container.querySelector('.progress-percent');
+
+                if (progressBar) progressBar.style.width = percent + '%';
+                if (progressText) progressText.innerText = percent + '%';
+            }
+        });
+    </script>
 </body>
 
 </html>
