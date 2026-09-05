@@ -1,14 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Utility Data Reconciliation Engine</title>
+    <title>SAT DATA INTEGRATION SYSTEM</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- HTMX -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    
+
     <script>
         tailwind.config = {
             theme: {
@@ -25,11 +26,20 @@
         }
     </script>
     <style>
-        .htmx-indicator { display: none; }
-        .htmx-request .htmx-indicator { display: inline-block; }
-        .htmx-request.htmx-indicator { display: inline-block; }
+        .htmx-indicator {
+            display: none;
+        }
+
+        .htmx-request .htmx-indicator {
+            display: inline-block;
+        }
+
+        .htmx-request.htmx-indicator {
+            display: inline-block;
+        }
     </style>
 </head>
+
 <body class="bg-lightCream text-darkTeal min-h-screen p-6 font-sans antialiased">
 
     <div class="max-w-7xl mx-auto space-y-6">
@@ -38,9 +48,11 @@
         <header class="bg-white p-5 rounded-xl border border-slateGray/30 shadow-sm flex items-center justify-between">
             <div>
                 <h1 class="text-2xl font-bold text-darkTeal tracking-tight">SAT DATA INTEGRATION</h1>
-                <p class="text-xs text-slateGray font-medium mt-1">Made using DuckDB & FastAPI - by neelo</p>
+                <p class="text-xs text-slateGray font-medium mt-1">Made using DuckDB & FastAPI
+                </p>
             </div>
-            <span class="px-3 py-1 bg-softBlue/30 text-darkTeal border border-softBlue text-xs font-semibold rounded-full">
+            <span
+                class="px-3 py-1 bg-softBlue/30 text-darkTeal border border-softBlue text-xs font-semibold rounded-full">
                 System Ready
             </span>
         </header>
@@ -48,7 +60,10 @@
         <!-- Ingestion Grid -->
         <div class="bg-white p-6 rounded-xl border border-slateGray/30 shadow-sm">
             <h2 class="text-lg font-bold text-darkTeal mb-4 flex items-center gap-2">
-                <svg class="w-5 h-5 text-skyBlue" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                <svg class="w-5 h-5 text-skyBlue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                </svg>
                 Data Source Ingestion Setup
             </h2>
 
@@ -56,38 +71,39 @@
 
                 <!-- Helper Card Macro -->
                 {% set cards = [
-                    ('MI', 'MI Table (Parquet File)', 'file', 'C:/data/mi.parquet'),
-                    ('NSC', 'NSC Table (Parquet File)', 'file', 'C:/data/nsc.parquet'),
-                    ('SSR', 'SSR Table (Parquet File)', 'file', 'C:/data/ssr.parquet'),
-                    ('sat_combined', 'SAT Combined (Parquet File)', 'file', 'C:/data/sat.parquet'),
-                    ('fit_combined', 'FIT Combined (Parquet File)', 'file', 'C:/data/fit.parquet'),
-                    ('MDM', 'MDM Folder (CSV Folder)', 'folder', 'C:/data/mdm_folder'),
-                    ('MDS', 'MDS Folder (CSV Folder)', 'folder', 'C:/data/mds_folder'),
-                    ('CP', 'CP Folder (CSV Folder)', 'folder', 'C:/data/cp_folder'),
-                    ('lp', 'LP Raw Folder (Datewise CSVs)', 'folder', 'C:/data/lp_folder'),
-                    ('dp', 'DP Raw Folder (Datewise CSVs)', 'folder', 'C:/data/dp_folder'),
-                    ('bp', 'BP Raw Folder (Datewise CSVs)', 'folder', 'C:/data/bp_folder')
+                ('MI', 'MI Table (Parquet File)', 'file', 'C:/data/mi.parquet'),
+                ('NSC', 'NSC Table (Parquet File)', 'file', 'C:/data/nsc.parquet'),
+                ('SSR', 'SSR Table (Parquet File)', 'file', 'C:/data/ssr.parquet'),
+                ('sat_combined', 'SAT Combined (Parquet File)', 'file', 'C:/data/sat.parquet'),
+                ('fit_combined', 'FIT Combined (Parquet File)', 'file', 'C:/data/fit.parquet'),
+                ('MDM', 'MDM Folder (CSV Folder)', 'folder', 'C:/data/mdm_folder'),
+                ('MDS', 'MDS Folder (CSV Folder)', 'folder', 'C:/data/mds_folder'),
+                ('CP', 'CP Folder (CSV Folder)', 'folder', 'C:/data/cp_folder'),
+                ('lp', 'LP Raw Folder (Datewise CSVs)', 'folder', 'C:/data/lp_folder'),
+                ('dp', 'DP Raw Folder (Datewise CSVs)', 'folder', 'C:/data/dp_folder'),
+                ('bp', 'BP Raw Folder (Datewise CSVs)', 'folder', 'C:/data/bp_folder')
                 ] %}
 
                 {% for key, label, input_type, placeholder in cards %}
-                <div class="bg-lightCream/30 p-4 rounded-lg border border-slateGray/20 hover:border-skyBlue transition-colors flex flex-col justify-between">
+                <div
+                    class="bg-lightCream/30 p-4 rounded-lg border border-slateGray/20 hover:border-skyBlue transition-colors flex flex-col justify-between">
                     <div>
                         <div class="flex items-center justify-between mb-2">
                             <h3 class="text-sm font-bold text-darkTeal">{{ label }}</h3>
-                            <span class="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-softBlue/30 text-darkTeal">
+                            <span
+                                class="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-softBlue/30 text-darkTeal">
                                 {{ input_type }}
                             </span>
                         </div>
-                        
-                        <form hx-post="/ingest/{{ key }}" hx-target="#status-{{ key }}" hx-indicator="#ind-{{ key }}" class="space-y-2">
-                            <input type="text" 
-                                   name="{{ 'file_path' if input_type == 'file' else 'folder_path' }}" 
-                                   placeholder="{{ placeholder }}" 
-                                   required
-                                   class="w-full bg-white text-xs text-darkTeal p-2 rounded border border-slateGray/30 focus:outline-none focus:border-skyBlue placeholder:text-slateGray/50">
-                            
-                            <button type="submit" 
-                                    class="w-full bg-darkTeal hover:bg-opacity-90 text-lightCream text-xs font-semibold py-1.5 rounded transition flex items-center justify-center gap-1">
+
+                        <form hx-post="/ingest/{{ key }}" hx-target="#status-{{ key }}" hx-indicator="#ind-{{ key }}"
+                            class="space-y-2">
+                            <input type="text" name="{{ 'file_path' if input_type == 'file' else 'folder_path' }}"
+                                placeholder="{{ placeholder }}" required
+                                class="w-full bg-white text-xs text-darkTeal p-2 rounded border border-slateGray/30 focus:outline-none focus:border-skyBlue placeholder:text-slateGray/50">
+
+                            <button type="submit"
+                                class="w-full bg-darkTeal hover:bg-opacity-90 text-lightCream text-xs font-semibold py-1.5 rounded transition flex items-center justify-center gap-1">
                                 <span>Load {{ key|upper }}</span>
                                 <span id="ind-{{ key }}" class="htmx-indicator animate-spin">🌀</span>
                             </button>
@@ -104,16 +120,16 @@
         </div>
 
         <!-- Audit Trigger Bar -->
-        <div class="bg-white p-6 rounded-xl border border-slateGray/30 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+        <div
+            class="bg-white p-6 rounded-xl border border-slateGray/30 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
             <div>
                 <h3 class="text-base font-bold text-darkTeal">Execute Reconciliation Pipeline</h3>
-                <p class="text-xs text-slateGray">Run joining logic, generate export dataframes (`Final_LP`, `Final_BP`, `Final_DP`), and create download links.</p>
+                <p class="text-xs text-slateGray">Run joining logic, generate export dataframes (`Final_LP`, `Final_BP`,
+                    `Final_DP`), and create download links.</p>
             </div>
-            
-            <button hx-post="/run-audit" 
-                    hx-target="#audit-results" 
-                    hx-indicator="#audit-spinner"
-                    class="bg-skyBlue hover:bg-opacity-90 text-darkTeal font-bold px-6 py-2.5 rounded-lg text-sm transition shadow-sm flex items-center gap-2">
+
+            <button hx-post="/run-audit" hx-target="#audit-results" hx-indicator="#audit-spinner"
+                class="bg-skyBlue hover:bg-opacity-90 text-darkTeal font-bold px-6 py-2.5 rounded-lg text-sm transition shadow-sm flex items-center gap-2">
                 <span>Run Full Audit</span>
                 <span id="audit-spinner" class="htmx-indicator animate-spin">🌀</span>
             </button>
@@ -125,4 +141,5 @@
     </div>
 
 </body>
+
 </html>
