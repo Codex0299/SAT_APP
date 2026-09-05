@@ -16,6 +16,9 @@ templates = Jinja2Templates(directory=templates_path)
 # In-memory DuckDB connection
 conn = duckdb.connect(database=":memory:")
 
+# Maximize performance on a 16 GB system
+conn.execute("SET max_memory = '3GB'")   # Allocates 4 GB specifically to DuckDB
+conn.execute("SET threads = 8")          # Allows multi-threaded execution (adjust based on your CPU cores)
 # Task progress tracker store: {task_id: {"percent": int, "status": str, "result_html": str, "completed": bool, "error": str}}
 PROGRESS_STORE: Dict[str, Dict[str, Any]] = {}
 
@@ -292,6 +295,13 @@ def bg_build_reconciliation_output(task_id: str):
             output_path = os.path.join(BASE_DIR, filename)
             db.execute(
                 f"COPY {table} TO '{output_path}' (HEADER, DELIMITER ',')")
+
+            temp_tables = ["LP_clean", "DP_clean", "BP_clean", "WFM"]
+        for tbl in temp_tables:
+            db.execute(f"DROP TABLE IF EXISTS {tbl}")
+
+        # Force DuckDB memory garbage collection
+        db.execute("CHECKPOINT;")
 
         columns = [col[0]
                    for col in db.execute("DESCRIBE Final_DP").fetchall()]
