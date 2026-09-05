@@ -15,9 +15,10 @@
             theme: {
                 extend: {
                     colors: {
-                        darkTeal: '#2F4F4F',
+                        darkTeal: '#000000',
                         slateGray: '#778899',
-                        lightCream: '#F5F5DC',
+                        lightCream: '#F4F1EA',
+                        blue: '#6D8196',
                         softBlue: '#ADC8E6',
                         skyBlue: '#67CEEB',
                     }
@@ -53,7 +54,7 @@
             </div>
             <span
                 class="px-3 py-1 bg-softBlue/30 text-darkTeal border border-softBlue text-xs font-semibold rounded-full">
-                System Ready
+                v1.0.0
             </span>
         </header>
 
@@ -64,7 +65,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
                 </svg>
-                Data Source Ingestion Setup
+                Data Ingestion 
             </h2>
 
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -86,7 +87,7 @@
 
                 {% for key, label, input_type, placeholder in cards %}
                 <div
-                    class="bg-lightCream/30 p-4 rounded-lg border border-slateGray/20 hover:border-skyBlue transition-colors flex flex-col justify-between">
+                    class="bg-blue/30 p-4 rounded-lg border border-slateGray/20 hover:border-skyBlue transition-colors flex flex-col justify-between">
                     <div>
                         <div class="flex items-center justify-between mb-2">
                             <h3 class="text-sm font-bold text-darkTeal">{{ label }}</h3>
@@ -130,7 +131,7 @@
 
             <button hx-post="/run-audit" hx-target="#audit-results" hx-indicator="#audit-spinner"
                 class="bg-skyBlue hover:bg-opacity-90 text-darkTeal font-bold px-6 py-2.5 rounded-lg text-sm transition shadow-sm flex items-center gap-2">
-                <span>Run Full Audit</span>
+                <span>Click here to get ready sat file </span>
                 <span id="audit-spinner" class="htmx-indicator animate-spin">🌀</span>
             </button>
         </div>
