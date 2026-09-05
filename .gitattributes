@@ -1,0 +1,4 @@
+# Exclude specific files from GitHub language calculations
+*.txt linguist-documentation
+docs/* linguist-documentation
+templates/* linguist-detectable=false
