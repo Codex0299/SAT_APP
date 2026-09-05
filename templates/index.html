@@ -1,286 +1,128 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
-    <title>Required Data Ingestion UI</title>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Utility Data Reconciliation Engine</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        darkTeal: '#2F4F4F',
+                        slateGray: '#778899',
+                        lightCream: '#F5F5DC',
+                        softBlue: '#ADC8E6',
+                        skyBlue: '#67CEEB',
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        .htmx-indicator {
-            display: none;
-        }
-
-        .htmx-request .htmx-indicator {
-            display: block;
-        }
-
-        .htmx-request.htmx-indicator {
-            display: block;
-        }
+        .htmx-indicator { display: none; }
+        .htmx-request .htmx-indicator { display: inline-block; }
+        .htmx-request.htmx-indicator { display: inline-block; }
     </style>
 </head>
+<body class="bg-lightCream text-darkTeal min-h-screen p-6 font-sans antialiased">
 
-<body class="bg-slate-900 text-slate-100 p-8 min-h-screen">
+    <div class="max-w-7xl mx-auto space-y-6">
 
-    <div class="max-w-6xl mx-auto space-y-6">
-        <h1 class="text-2xl font-bold text-emerald-400">ADD THESE FILES</h1>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-            <!-- 1. MI (Parquet) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 space-y-2">
-                <h3 class="text-sm font-bold text-slate-200">1. MI</h3>
-                <span class="text-xs text-blue-400 block">Format: PARQUET</span>
-                <form hx-post="/ingest/MI" hx-target="#status-mi" hx-encoding="multipart/form-data"
-                    hx-indicator="#loading-mi" class="space-y-2">
-                    <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
-                      file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0
-                      file:text-xs file:font-semibold file:bg-slate-700 file:text-slate-200
-                      hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
-                    <button type="submit"
-                        class="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
-                        Load Parquet
-                    </button>
-                </form>
-                <div id="loading-mi" class="htmx-indicator">
-                    <div class="flex justify-between text-[10px] text-slate-400 mb-1">
-                        <span>Uploading...</span>
-                        <span class="progress-percent">0%</span>
-                    </div>
-                    <div class="w-full bg-slate-900 rounded-full h-1 overflow-hidden">
-                        <div class="progress-bar bg-blue-500 h-1 w-0 transition-all duration-150"></div>
-                    </div>
-                </div>
-                <div id="status-mi" class="mt-2"></div>
+        <!-- Header Bar -->
+        <header class="bg-white p-5 rounded-xl border border-slateGray/30 shadow-sm flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-darkTeal tracking-tight">SAT DATA INTEGRATION</h1>
+                <p class="text-xs text-slateGray font-medium mt-1">Made using DuckDB & FastAPI - by neelo</p>
             </div>
+            <span class="px-3 py-1 bg-softBlue/30 text-darkTeal border border-softBlue text-xs font-semibold rounded-full">
+                System Ready
+            </span>
+        </header>
 
-            <!-- 2. NSC (Parquet) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 space-y-2">
-                <h3 class="text-sm font-bold text-slate-200">2. NSC</h3>
-                <span class="text-xs text-blue-400 block">Format: PARQUET</span>
-                <form hx-post="/ingest/NSC" hx-target="#status-nsc" hx-encoding="multipart/form-data"
-                    hx-indicator="#loading-nsc" class="space-y-2">
-                    <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
-                      file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0
-                      file:text-xs file:font-semibold file:bg-slate-700 file:text-slate-200
-                      hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
-                    <button type="submit"
-                        class="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
-                        Load Parquet
-                    </button>
-                </form>
-                <div id="loading-nsc" class="htmx-indicator">
-                    <div class="flex justify-between text-[10px] text-slate-400 mb-1">
-                        <span>Uploading...</span>
-                        <span class="progress-percent">0%</span>
-                    </div>
-                    <div class="w-full bg-slate-900 rounded-full h-1 overflow-hidden">
-                        <div class="progress-bar bg-blue-500 h-1 w-0 transition-all duration-150"></div>
-                    </div>
-                </div>
-                <div id="status-nsc" class="mt-2"></div>
-            </div>
+        <!-- Ingestion Grid -->
+        <div class="bg-white p-6 rounded-xl border border-slateGray/30 shadow-sm">
+            <h2 class="text-lg font-bold text-darkTeal mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-skyBlue" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                Data Source Ingestion Setup
+            </h2>
 
-            <!-- 3. SSR (Parquet) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 space-y-2">
-                <h3 class="text-sm font-bold text-slate-200">3. SSR</h3>
-                <span class="text-xs text-blue-400 block">Format: PARQUET</span>
-                <form hx-post="/ingest/SSR" hx-target="#status-ssr" hx-encoding="multipart/form-data"
-                    hx-indicator="#loading-ssr" class="space-y-2">
-                    <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
-                      file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0
-                      file:text-xs file:font-semibold file:bg-slate-700 file:text-slate-200
-                      hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
-                    <button type="submit"
-                        class="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
-                        Load Parquet
-                    </button>
-                </form>
-                <div id="loading-ssr" class="htmx-indicator">
-                    <div class="flex justify-between text-[10px] text-slate-400 mb-1">
-                        <span>Uploading...</span>
-                        <span class="progress-percent">0%</span>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+
+                <!-- Helper Card Macro -->
+                {% set cards = [
+                    ('MI', 'MI Table (Parquet File)', 'file', 'C:/data/mi.parquet'),
+                    ('NSC', 'NSC Table (Parquet File)', 'file', 'C:/data/nsc.parquet'),
+                    ('SSR', 'SSR Table (Parquet File)', 'file', 'C:/data/ssr.parquet'),
+                    ('sat_combined', 'SAT Combined (Parquet File)', 'file', 'C:/data/sat.parquet'),
+                    ('fit_combined', 'FIT Combined (Parquet File)', 'file', 'C:/data/fit.parquet'),
+                    ('MDM', 'MDM Folder (CSV Folder)', 'folder', 'C:/data/mdm_folder'),
+                    ('MDS', 'MDS Folder (CSV Folder)', 'folder', 'C:/data/mds_folder'),
+                    ('CP', 'CP Folder (CSV Folder)', 'folder', 'C:/data/cp_folder'),
+                    ('lp', 'LP Raw Folder (Datewise CSVs)', 'folder', 'C:/data/lp_folder'),
+                    ('dp', 'DP Raw Folder (Datewise CSVs)', 'folder', 'C:/data/dp_folder'),
+                    ('bp', 'BP Raw Folder (Datewise CSVs)', 'folder', 'C:/data/bp_folder')
+                ] %}
+
+                {% for key, label, input_type, placeholder in cards %}
+                <div class="bg-lightCream/30 p-4 rounded-lg border border-slateGray/20 hover:border-skyBlue transition-colors flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-sm font-bold text-darkTeal">{{ label }}</h3>
+                            <span class="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-softBlue/30 text-darkTeal">
+                                {{ input_type }}
+                            </span>
+                        </div>
+                        
+                        <form hx-post="/ingest/{{ key }}" hx-target="#status-{{ key }}" hx-indicator="#ind-{{ key }}" class="space-y-2">
+                            <input type="text" 
+                                   name="{{ 'file_path' if input_type == 'file' else 'folder_path' }}" 
+                                   placeholder="{{ placeholder }}" 
+                                   required
+                                   class="w-full bg-white text-xs text-darkTeal p-2 rounded border border-slateGray/30 focus:outline-none focus:border-skyBlue placeholder:text-slateGray/50">
+                            
+                            <button type="submit" 
+                                    class="w-full bg-darkTeal hover:bg-opacity-90 text-lightCream text-xs font-semibold py-1.5 rounded transition flex items-center justify-center gap-1">
+                                <span>Load {{ key|upper }}</span>
+                                <span id="ind-{{ key }}" class="htmx-indicator animate-spin">🌀</span>
+                            </button>
+                        </form>
                     </div>
-                    <div class="w-full bg-slate-900 rounded-full h-1 overflow-hidden">
-                        <div class="progress-bar bg-blue-500 h-1 w-0 transition-all duration-150"></div>
+
+                    <div id="status-{{ key }}" class="mt-2 text-[11px] text-slateGray font-medium min-h-[18px]">
+                        Waiting for path...
                     </div>
                 </div>
-                <div id="status-ssr" class="mt-2"></div>
-            </div>
+                {% endfor %}
 
-            <!-- 4. MDM (CSV / Folder) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                <h3 class="text-sm font-bold text-slate-200">4. MDM</h3>
-                <span class="text-xs text-emerald-400 mb-2 block">Format: CSV / Folder</span>
-                <form hx-post="/ingest/MDM" hx-target="#status-mdm">
-                    <input type="text" name="folder_path" placeholder="Folder Path (e.g. C:\data\mdm)"
-                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2 focus:outline-none focus:border-emerald-500">
-                    <button type="submit"
-                        class="bg-emerald-600 hover:bg-emerald-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
-                        Load Folder
-                    </button>
-                </form>
-                <div id="status-mdm" class="mt-2"></div>
             </div>
-
-            <!-- 5. MDS (CSV / Folder) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                <h3 class="text-sm font-bold text-slate-200">5. MDS</h3>
-                <span class="text-xs text-emerald-400 mb-2 block">Format: CSV / Folder</span>
-                <form hx-post="/ingest/MDS" hx-target="#status-mds">
-                    <input type="text" name="folder_path" placeholder="Folder Path..."
-                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2 focus:outline-none focus:border-emerald-500">
-                    <button type="submit"
-                        class="bg-emerald-600 hover:bg-emerald-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
-                        Load Folder
-                    </button>
-                </form>
-                <div id="status-mds" class="mt-2"></div>
-            </div>
-
-            <!-- 6. CP (CSV / Folder) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                <h3 class="text-sm font-bold text-slate-200">6. CP</h3>
-                <span class="text-xs text-emerald-400 mb-2 block">Format: CSV / Folder</span>
-                <form hx-post="/ingest/CP" hx-target="#status-cp">
-                    <input type="text" name="folder_path" placeholder="Folder Path..."
-                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2 focus:outline-none focus:border-emerald-500">
-                    <button type="submit"
-                        class="bg-emerald-600 hover:bg-emerald-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
-                        Load Folder
-                    </button>
-                </form>
-                <div id="status-cp" class="mt-2"></div>
-            </div>
-
-            <!-- 7. SAT COMBINED (Parquet) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 space-y-2">
-                <h3 class="text-sm font-bold text-slate-200">7. SAT COMBINED</h3>
-                <span class="text-xs text-blue-400 block">Format: PARQUET</span>
-                <form hx-post="/ingest/sat_combined" hx-target="#status-sat" hx-encoding="multipart/form-data"
-                    hx-indicator="#loading-sat" class="space-y-2">
-                    <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
-                      file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0
-                      file:text-xs file:font-semibold file:bg-slate-700 file:text-slate-200
-                      hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
-                    <button type="submit"
-                        class="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
-                        Load Parquet
-                    </button>
-                </form>
-                <div id="loading-sat" class="htmx-indicator">
-                    <div class="flex justify-between text-[10px] text-slate-400 mb-1">
-                        <span>Uploading...</span>
-                        <span class="progress-percent">0%</span>
-                    </div>
-                    <div class="w-full bg-slate-900 rounded-full h-1 overflow-hidden">
-                        <div class="progress-bar bg-blue-500 h-1 w-0 transition-all duration-150"></div>
-                    </div>
-                </div>
-                <div id="status-sat" class="mt-2"></div>
-            </div>
-
-            <!-- 8. FIT COMBINED (Parquet) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 space-y-2">
-                <h3 class="text-sm font-bold text-slate-200">8. FIT COMBINED</h3>
-                <span class="text-xs text-blue-400 block">Format: PARQUET</span>
-                <form hx-post="/ingest/fit_combined" hx-target="#status-fit" hx-encoding="multipart/form-data"
-                    hx-indicator="#loading-fit" class="space-y-2">
-                    <input type="file" name="file" accept=".parquet" class="block w-full text-xs text-slate-400
-                      file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0
-                      file:text-xs file:font-semibold file:bg-slate-700 file:text-slate-200
-                      hover:file:bg-slate-600 file:cursor-pointer cursor-pointer">
-                    <button type="submit"
-                        class="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
-                        Load Parquet
-                    </button>
-                </form>
-                <div id="loading-fit" class="htmx-indicator">
-                    <div class="flex justify-between text-[10px] text-slate-400 mb-1">
-                        <span>Uploading...</span>
-                        <span class="progress-percent">0%</span>
-                    </div>
-                    <div class="w-full bg-slate-900 rounded-full h-1 overflow-hidden">
-                        <div class="progress-bar bg-blue-500 h-1 w-0 transition-all duration-150"></div>
-                    </div>
-                </div>
-                <div id="status-fit" class="mt-2"></div>
-            </div>
-
-            <!-- 9. LP (CSV / Folder / Date-wise) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                <h3 class="text-sm font-bold text-slate-200">9. LP</h3>
-                <span class="text-xs text-purple-400 mb-2 block">Format: Date-Wise CSV Folder</span>
-                <form hx-post="/ingest/lp" hx-target="#status-lp">
-                    <input type="text" name="folder_path" placeholder="Date-Wise Folder Path..."
-                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2 focus:outline-none focus:border-purple-500">
-                    <button type="submit"
-                        class="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
-                        Load LP Folders
-                    </button>
-                </form>
-                <div id="status-lp" class="mt-2"></div>
-            </div>
-
-            <!-- 10. DP (CSV / Folder / Date-wise) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                <h3 class="text-sm font-bold text-slate-200">10. DP</h3>
-                <span class="text-xs text-purple-400 mb-2 block">Format: Date-Wise CSV Folder</span>
-                <form hx-post="/ingest/dp" hx-target="#status-dp">
-                    <input type="text" name="folder_path" placeholder="Date-Wise Folder Path..."
-                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2 focus:outline-none focus:border-purple-500">
-                    <button type="submit"
-                        class="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
-                        Load DP Folders
-                    </button>
-                </form>
-                <div id="status-dp" class="mt-2"></div>
-            </div>
-
-            <!-- 11. BP (CSV / Folder / Date-wise) -->
-            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                <h3 class="text-sm font-bold text-slate-200">11. BP</h3>
-                <span class="text-xs text-purple-400 mb-2 block">Format: Date-Wise CSV Folder</span>
-                <form hx-post="/ingest/bp" hx-target="#status-bp">
-                    <input type="text" name="folder_path" placeholder="Date-Wise Folder Path..."
-                        class="bg-slate-900 text-xs p-2 rounded border border-slate-700 w-full mb-2 focus:outline-none focus:border-purple-500">
-                    <button type="submit"
-                        class="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-xs font-semibold w-full transition">
-                        Load BP Folders
-                    </button>
-                </form>
-                <div id="status-bp" class="mt-2"></div>
-            </div>
-
         </div>
 
-        <!-- Audit Execution -->
-        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 mt-6">
-            <button hx-get="/run-audit" hx-target="#audit-output" hx-indicator="#audit-spinner"
-                class="bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold px-6 py-2.5 rounded-lg text-sm transition flex items-center gap-2">
-                <span>Run Cross-Table Reconciliation Audit</span>
-                <span id="audit-spinner" class="htmx-indicator animate-spin text-slate-900">🌀</span>
+        <!-- Audit Trigger Bar -->
+        <div class="bg-white p-6 rounded-xl border border-slateGray/30 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+            <div>
+                <h3 class="text-base font-bold text-darkTeal">Execute Reconciliation Pipeline</h3>
+                <p class="text-xs text-slateGray">Run joining logic, generate export dataframes (`Final_LP`, `Final_BP`, `Final_DP`), and create download links.</p>
+            </div>
+            
+            <button hx-post="/run-audit" 
+                    hx-target="#audit-results" 
+                    hx-indicator="#audit-spinner"
+                    class="bg-skyBlue hover:bg-opacity-90 text-darkTeal font-bold px-6 py-2.5 rounded-lg text-sm transition shadow-sm flex items-center gap-2">
+                <span>Run Full Audit</span>
+                <span id="audit-spinner" class="htmx-indicator animate-spin">🌀</span>
             </button>
-            <div id="audit-output" class="mt-4"></div>
         </div>
+
+        <!-- Dynamic Results Area -->
+        <div id="audit-results" class="space-y-6"></div>
 
     </div>
 
-    <!-- Script to track real-time upload progress percentages -->
-    <script>
-        document.addEventListener('htmx:xhr:progress', function (evt) {
-            if (evt.detail.lengthComputable) {
-                let percent = Math.round((evt.detail.loaded / evt.detail.total) * 100);
-                let container = evt.detail.elt;
-                let progressBar = container.querySelector('.progress-bar');
-                let progressText = container.querySelector('.progress-percent');
-
-                if (progressBar) progressBar.style.width = percent + '%';
-                if (progressText) progressText.innerText = percent + '%';
-            }
-        });
-    </script>
 </body>
-
 </html>

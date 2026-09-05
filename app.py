@@ -1,6 +1,6 @@
 import os
 import duckdb
-from fastapi import FastAPI, File, Request, UploadFile
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 
@@ -37,35 +37,36 @@ DATASET_CONFIG = {
 def ingest_file_or_folder(
     dataset_key: str, file_path: str = None, folder_path: str = None
 ):
-    """Strictly ingests data into dedicated DuckDB tables based on diagram requirements."""
+    """Ingests data into dedicated DuckDB tables."""
     config = DATASET_CONFIG[dataset_key]
     table_name = config["table"]
 
+    if folder_path:
+        folder_path = folder_path.strip('\'" ').strip().replace("\\", "/")
+
+    if file_path:
+        file_path = file_path.strip('\'" ').strip().replace("\\", "/")
+
     conn.execute(f"DROP TABLE IF EXISTS {table_name}")
 
-    # 1. PARQUET FILES (WFM, sat COMBINED, fit COMBINED)
     if config["type"] == "parquet" and file_path:
         conn.execute(
             f"CREATE TABLE {table_name} AS SELECT * FROM read_parquet('{file_path}')"
         )
-
-    # 2. CSV / FOLDER DUMPS (MDM, MDS, CP)
     elif config["type"] == "csv_folder" and folder_path:
-        search_path = os.path.join(folder_path, "*.csv")
+        search_path = f"{folder_path}/*.csv"
         conn.execute(
             f"CREATE TABLE {table_name} AS SELECT * FROM read_csv_auto('{search_path}', ignore_errors=true)"
         )
-
-    # 3. DATE-WISE CSV FOLDERS (LP, DP, BP)
     elif config["type"] == "datewise_csv" and folder_path:
-        search_path = os.path.join(folder_path, "**", "*.csv")
+        search_path = f"{folder_path}/**/*.csv"
         conn.execute(
             f"CREATE TABLE {table_name} AS SELECT * FROM read_csv_auto('{search_path}', filename=true, ignore_errors=true)"
         )
 
 
 def build_reconciliation_output():
-    """Backend Logic: Performs cross-table audit across loaded dumps and exports results."""
+    """Performs cross-table audit and exports Final_LP, Final_BP, Final_DP tables."""
     query = """
     CREATE OR REPLACE TABLE WFM AS
     SELECT 
@@ -100,7 +101,6 @@ def build_reconciliation_output():
           AND "API MDM Status" = 'Approve'
     );
 
-    -- Indexing & Deletion for sat table
     CREATE INDEX idx_sat_consumer ON sat ("consumer number");
     CREATE INDEX idx_sat_meter ON sat ("meter no");
 
@@ -112,7 +112,6 @@ def build_reconciliation_output():
         SELECT 1 FROM sat s WHERE s."meter no" = w.METER_NUMBER
     );
 
-    -- Indexing & Deletion for fit table
     CREATE INDEX idx_fit_consumer ON fit ("consumer number");
     CREATE INDEX idx_fit_meter ON fit ("meter no");
 
@@ -124,7 +123,6 @@ def build_reconciliation_output():
         SELECT 1 FROM fit s WHERE s."meter no" = w.METER_NUMBER
     );
 
-    -- Indexing & Deletion for MDM table
     CREATE INDEX idx_MDM_consumer ON MDM ("ConsumerNumber");
     CREATE INDEX idx_MDM_meter ON MDM ("DeviceSerialNumber");
 
@@ -136,7 +134,6 @@ def build_reconciliation_output():
           AND s."DeviceSerialNumber" = w.METER_NUMBER
     );
 
-    -- Indexing & Deletion for MDS table
     CREATE INDEX idx_MDS_consumer ON MDS ("Consumer No");
     CREATE INDEX idx_MDS_meter ON MDS ("Meter No");
 
@@ -148,7 +145,6 @@ def build_reconciliation_output():
           AND s."Meter No" = w.METER_NUMBER
     );
 
-    -- Indexing & Deletion for CP table
     CREATE INDEX idx_CP_consumer ON CP ("consumer_no");
     CREATE INDEX idx_CP_meter ON CP ("meter_no");
 
@@ -160,7 +156,6 @@ def build_reconciliation_output():
           AND s."meter_no" = w.METER_NUMBER
     );
 
-    -- Clean tables preserving duplicate devicename + parsed meter_no
     CREATE OR REPLACE TABLE LP_clean AS
     SELECT *, REGEXP_REPLACE(devicename, '^(ISK|LNT)[-_]?', '', 'i') AS meter_no FROM lp;
 
@@ -170,20 +165,101 @@ def build_reconciliation_output():
     CREATE OR REPLACE TABLE BP_clean AS
     SELECT *, REGEXP_REPLACE(devicename, '^(ISK|LNT)[-_]?', '', 'i') AS meter_no FROM bp;
 
-    -- Final output table creation
-    CREATE OR REPLACE TABLE audit_summary AS SELECT * FROM WFM;
+    -- Final DP
+    CREATE OR REPLACE TABLE Final_DP AS
+    WITH dp_unpivoted AS (
+        UNPIVOT DP_clean
+        ON COLUMNS('^\\d{4}-\\d{2}-\\d{2}$')
+        INTO
+            NAME date_col
+            VALUE val
+    ),
+    dp_aggregated AS (
+        SELECT 
+            meter_no,
+            type,
+            COUNT(DISTINCT date_col) AS EXPECTED,
+            SUM(TRY_CAST(val AS INTEGER)) AS RECIEVED
+        FROM dp_unpivoted
+        GROUP BY meter_no, type
+    )
+    SELECT 
+        dp.* EXCLUDE (meter_no),
+        COALESCE(a.RECIEVED, 0) AS RECIEVED,
+        COALESCE(a.EXPECTED, 0) AS EXPECTED,
+        ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE
+    FROM WFM w
+    LEFT JOIN DP_clean dp ON w.METER_NUMBER = dp.meter_no
+    LEFT JOIN dp_aggregated a ON dp.meter_no = a.meter_no AND dp.type IS NOT DISTINCT FROM a.type;
+
+    -- Final LP
+    CREATE OR REPLACE TABLE Final_LP AS
+    WITH lp_unpivoted AS (
+        UNPIVOT LP_clean
+        ON COLUMNS('^\\d{4}-\\d{2}-\\d{2}$')
+        INTO
+            NAME date_col
+            VALUE val
+    ),
+    lp_aggregated AS (
+        SELECT 
+            meter_no,
+            COUNT(DISTINCT date_col) * 48 AS EXPECTED,
+            SUM(TRY_CAST(val AS INTEGER)) AS RECIEVED
+        FROM lp_unpivoted
+        GROUP BY meter_no
+    )                                     
+    SELECT 
+        lp.* EXCLUDE (meter_no),
+        COALESCE(a.RECIEVED, 0) AS RECIEVED,
+        COALESCE(a.EXPECTED, 0) AS EXPECTED,
+        ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE
+    FROM WFM w
+    LEFT JOIN LP_clean lp ON w.METER_NUMBER = lp.meter_no
+    LEFT JOIN lp_aggregated a ON lp.meter_no = a.meter_no;
+
+    -- Final BP
+    CREATE OR REPLACE TABLE Final_BP AS
+    WITH bp_unpivoted AS (
+        UNPIVOT BP_clean
+        ON COLUMNS('^\\d{4}-\\d{2}-\\d{2}$')
+        INTO
+            NAME date_col
+            VALUE val
+    ),
+    bp_aggregated AS (
+        SELECT 
+            meter_no,
+            COUNT(DISTINCT date_col) AS EXPECTED,
+            SUM(TRY_CAST(val AS INTEGER)) AS RECIEVED
+        FROM bp_unpivoted
+        GROUP BY meter_no
+    )
+    SELECT 
+        bp.* EXCLUDE (meter_no),
+        COALESCE(a.RECIEVED, 0) AS RECIEVED,
+        COALESCE(a.EXPECTED, 0) AS EXPECTED,
+        ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE
+    FROM WFM w
+    LEFT JOIN BP_clean bp ON w.METER_NUMBER = bp.meter_no
+    LEFT JOIN bp_aggregated a ON bp.meter_no = a.meter_no;
     """
 
     conn.execute(query)
 
-    # Export audit summary to CSV for download
-    output_path = os.path.join(BASE_DIR, "audit_summary_results.csv")
-    conn.execute(
-        f"COPY audit_summary TO '{output_path}' (HEADER, DELIMITER ',')")
+    # Export audit summaries to CSV files for download
+    exports = {
+        "Final_LP": "final_lp.csv",
+        "Final_BP": "final_bp.csv",
+        "Final_DP": "final_dp.csv",
+    }
 
-    columns = [col[0]
-               for col in conn.execute("DESCRIBE audit_summary").fetchall()]
-    rows = conn.execute("SELECT * FROM audit_summary LIMIT 100").fetchall()
+    for table, filename in exports.items():
+        output_path = os.path.join(BASE_DIR, filename)
+        conn.execute(f"COPY {table} TO '{output_path}' (HEADER, DELIMITER ',')")
+
+    columns = [col[0] for col in conn.execute("DESCRIBE Final_DP").fetchall()]
+    rows = conn.execute("SELECT * FROM Final_DP LIMIT 100").fetchall()
     return columns, rows
 
 
@@ -209,7 +285,7 @@ async def handle_ingestion(dataset_key: str, request: Request):
     if config["type"] == "parquet":
         file = form.get("file")
         if not file or not file.filename:
-            return f'<p class="text-amber-400 text-xs">No file uploaded.</p>'
+            return f'<p class="text-amber-300 text-xs">No file uploaded.</p>'
 
         temp_filename = f"temp_{file.filename}"
         with open(temp_filename, "wb") as f:
@@ -222,15 +298,15 @@ async def handle_ingestion(dataset_key: str, request: Request):
     else:
         folder_path = form.get("folder_path")
         if not folder_path:
-            return f'<p class="text-amber-400 text-xs">Folder path is missing.</p>'
+            return f'<p class="text-amber-300 text-xs">Folder path is missing.</p>'
         ingest_file_or_folder(dataset_key, folder_path=folder_path)
 
     table_name = config["table"]
     count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
 
     return f"""
-    <div class="text-xs text-emerald-400 font-semibold">
-        ✅ Ingested into table <code>{table_name}</code> ({count:,} records)
+    <div class="text-xs text-[#FFFFE3] bg-[#6D8196]/30 px-2.5 py-1.5 rounded border border-[#6D8196] font-medium">
+        ✅ Ingested <code>{table_name}</code> ({count:,} records)
     </div>
     """
 
@@ -242,52 +318,89 @@ async def run_audit():
 
         header = "".join(
             [
-                f'<th class="p-2 border-b border-slate-700 bg-slate-800 text-left">{c}</th>'
+                f'<th class="p-2 border-b border-[#CBCBCB]/30 bg-[#4A4A4A] text-[#FFFFE3] text-left font-semibold">{c}</th>'
                 for c in columns
             ]
         )
         body = "".join(
             [
-                f"<tr>{''.join([f'<td class=\"p-2 border-b border-slate-800\">{v}</td>' for v in r])}</tr>"
+                f"<tr class=\"hover:bg-[#4A4A4A]/50 transition\">{''.join([f'<td class=\"p-2 border-b border-[#CBCBCB]/20 text-[#FFFFE3]/90\">{v}</td>' for v in r])}</tr>"
                 for r in rows
             ]
         )
 
         return f"""
         <div class="space-y-4">
-            <div class="flex justify-between items-center bg-slate-800/60 p-3 rounded-md border border-slate-700">
-                <span class="text-xs text-slate-300 font-medium">Audit pipeline executed successfully.</span>
-                <a href="/download-audit-csv" 
-                   class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded flex items-center gap-2 transition">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-                    </svg>
-                    Download Audit CSV
-                </a>
+            <div class="flex flex-wrap items-center justify-between gap-3 bg-[#4A4A4A] p-4 rounded-lg border border-[#CBCBCB]">
+                <span class="text-xs text-[#FFFFE3] font-semibold tracking-wide">
+                    ✨ Reconciliation Audit Complete. Final Outputs Ready for Download:
+                </span>
+                <div class="flex items-center gap-2">
+                    <a href="/download-csv/lp" 
+                       class="px-3.5 py-2 bg-[#6D8196] hover:bg-[#6D8196]/80 text-[#FFFFE3] text-xs font-bold rounded-md shadow-sm flex items-center gap-1.5 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                        </svg>
+                        Download LP
+                    </a>
+                    <a href="/download-csv/bp" 
+                       class="px-3.5 py-2 bg-[#6D8196] hover:bg-[#6D8196]/80 text-[#FFFFE3] text-xs font-bold rounded-md shadow-sm flex items-center gap-1.5 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                        </svg>
+                        Download BP
+                    </a>
+                    <a href="/download-csv/dp" 
+                       class="px-3.5 py-2 bg-[#6D8196] hover:bg-[#6D8196]/80 text-[#FFFFE3] text-xs font-bold rounded-md shadow-sm flex items-center gap-1.5 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                        </svg>
+                        Download DP
+                    </a>
+                </div>
             </div>
-            <div class="overflow-x-auto max-h-96 border border-slate-800 rounded-md">
-                <table class="w-full text-xs text-slate-300 border-collapse">
-                    <thead><tr class="text-slate-400 sticky top-0">{header}</tr></thead>
+
+            <div class="overflow-x-auto max-h-96 border border-[#CBCBCB] rounded-lg bg-[#4A4A4A]">
+                <table class="w-full text-xs border-collapse">
+                    <thead><tr class="sticky top-0 shadow-sm">{header}</tr></thead>
                     <tbody>{body}</tbody>
                 </table>
             </div>
         </div>
         """
     except Exception as e:
-        return f'<div class="text-red-400 text-xs p-3 bg-red-950/30 rounded border border-red-800/50">Ingestion incomplete: {str(e)}</div>'
+        return f'<div class="text-red-300 text-xs p-3 bg-red-950/40 rounded border border-red-500/40">Audit Execution Error: {str(e)}</div>'
 
 
-@app.get("/download-audit-csv")
-async def download_audit_csv():
-    file_path = os.path.join(BASE_DIR, "audit_summary_results.csv")
+@app.get("/download-csv/{table_key}")
+async def download_csv(table_key: str):
+    valid_tables = {
+        "lp": "final_lp.csv",
+        "bp": "final_bp.csv",
+        "dp": "final_dp.csv",
+    }
+
+    if table_key not in valid_tables:
+        return HTMLResponse(
+            '<p class="text-red-400 text-xs">Invalid export requested.</p>'
+        )
+
+    file_name = valid_tables[table_key]
+    file_path = os.path.join(BASE_DIR, file_name)
 
     if not os.path.exists(file_path):
         return HTMLResponse(
-            '<p class="text-red-400 text-xs">No audit summary output found. Please run the audit step first.</p>'
+            f'<p class="text-red-400 text-xs">File <code>{file_name}</code> not found. Run the audit step first.</p>'
         )
 
     return FileResponse(
         path=file_path,
-        filename="audit_summary_results.csv",
+        filename=file_name,
         media_type="text/csv",
     )
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="127.0.0.1", port=8000)
