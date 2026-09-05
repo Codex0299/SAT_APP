@@ -1,0 +1,49 @@
+⚡ Smart Meter Data Reconciliation & Audit Engine
+An asynchronous, high-performance data processing web application built to ingest, validate, clean, and reconcile massive utility smart meter datasets (LP, DP, BP, SSR, NSC, MI, MDM, MDS, CP, SAT, FIT). Powered by FastAPI and DuckDB, this engine automates complex cross-dataset auditing, unpivots time-series records, and computes completion percentages with real-time UI progress updates.
+
+
+📌 Overview
+Managing and reconciling millions of smart meter data records across disparate formats (Parquet files and date-wise nested CSV folders) is computationally intensive and prone to schema mismatches.
+This application streamlines the entire audit lifecycle into an automated 8-Stage Reconciliation Pipeline. By utilizing DuckDB's in-memory columnar execution and HTMX polling, it provides instant feedback during ingestion and audit computation, generating cleaned, downloadable reconciliation reports (final_lp.csv, final_dp.csv, and final_bp.csv).
+
+
+⚡ Key Features
+High-Speed Columnar Ingestion: Process Parquet files and multi-folder datewise CSVs effortlessly using DuckDB's native file-reading capabilities (read_csv_auto, union_by_name=true, read_parquet).
+Asynchronous Progress Tracking: Real-time progress bars and stage updates powered by HTMX polling and FastAPI BackgroundTasks.
+8-Stage Reconciliation Pipeline:
+Automated WFM (Workforce Management) base table construction from approved SSR, NSC, and MI records.
+Multi-table exclusion indexing and filtering (SAT and FIT table validation).
+Master list validation across MDM, MDS, and CP datasets.
+Regex-based device serial number normalization (stripping ISK, LNT, and separator prefixes).
+Dynamic date unpivoting (UNPIVOT) to calculate expected vs. received data ratios and completion percentages.
+Metadata enrichment (including meter installation dates and device attributes).
+Instant Export & Interactive Preview: Downloadable audit reports (LP, DP, BP) and interactive HTML data preview tables directly in the browser interface.
+
+
+🛠️ Tech Stack
+Backend Framework: FastAPI (Python)
+SQL/Analytics Engine: DuckDB (In-memory OLAP Database)
+Frontend UI & Interactivity: HTMX, Jinja2 Templates
+Styling: Tailwind CSS
+Concurrency: Python BackgroundTasks + Asyncio
+
+🔄 8-Stage Audit Engine Pipeline
+Stage 1 (Base Creation): Extracts approved records from SSR (Site Survey Report) to build the base WFM table.
+Stage 2 (Record Merging): Ingests non-duplicate approved records from NSC (New Service Connection) and MI (Meter Installation).
+Stage 3 & 4 (Exclusion Filtering): Creates indexed lookups on SAT and FIT tables to remove matched installed/tested records.
+Stage 5 (Master Validation): Cross-validates remaining consumer and meter numbers against MDM, MDS, and CP master repositories.
+Stage 6 (Prefix Cleaning): Strips hardware prefixes (ISK_, LNT-, etc.) using DuckDB regex functions across LP, DP, and BP datasets.
+Stage 7 (Unpivoting & Ratios): Dynamically unpivots time-series date columns to calculate EXPECTED vs RECEIVED record counts and completion PERCENTAGE.
+Stage 8 (Export & UI Delivery): Exports finalized datasets to CSV and renders styled preview tables directly to the UI.
+
+
+ 📂 Supported Datasets
+| Dataset | Type | Description |
+| :--- | :--- | :--- |
+| **SSR / NSC / MI** | Parquet | Core input records for new service connections & meter installations |
+| **SAT / FIT** | Parquet | Tested and site-accepted meter lists used for exclusion filtering |
+| **MDM / MDS / CP** | CSV Folder | Master validation datasets |
+| **LP (Load Profile)** | Datewise CSVs | 30-minute interval load profile data (48 readings/day) |
+| **DP (Daily Profile)** | Datewise CSVs | Daily snapshot profile records |
+| **BP (Billing Profile)** | Datewise CSVs | Billing profile interval records |
+
