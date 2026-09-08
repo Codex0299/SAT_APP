@@ -15,12 +15,13 @@
             theme: {
                 extend: {
                     colors: {
-                        darkTeal: '#000000',
+                        darkTeal: '#c15f3c',
                         slateGray: '#000000',
-                        lightCream: '#F4F1EA',
-                        blue: '#6D8196',
+                        lightCream: '#b1ada1',
+                        blue: '#f4f3ee',
                         softBlue: '#ADC8E6',
-                        skyBlue: '#67CEEB',
+                        skyBlue: '#b1ada1',
+                        black: '#000000',
                     }
                 }
             }
@@ -48,12 +49,12 @@
         <!-- Header Bar -->
         <header class="bg-white p-5 rounded-xl border border-slateGray/30 shadow-sm flex items-center justify-between">
             <div>
-                <h1 class="text-2xl font-bold text-darkTeal tracking-tight">SAT DATA INTEGRATION</h1>
+                <h1 class="text-2xl font-bold text-darkTeal tracking-tight">SAT Data Integration Portal</h1>
                 <p class="text-xs text-slateGray font-medium mt-1">Made using DuckDB & FastAPI
                 </p>
             </div>
             <span
-                class="px-3 py-1 bg-softBlue/30 text-darkTeal border border-softBlue text-xs font-semibold rounded-full">
+                class="px-3 py-1 bg-softBlue/100 text-black border border-softBlue text-xs font-semibold rounded-full">
                 v1.0.0
             </span>
         </header>
@@ -104,7 +105,7 @@
                                 class="w-full bg-white text-xs text-darkTeal p-2 rounded border border-slateGray/30 focus:outline-none focus:border-skyBlue placeholder:text-slateGray/50">
 
                             <button type="submit"
-                                class="w-full bg-darkTeal hover:bg-opacity-90 text-lightCream text-xs font-semibold py-1.5 rounded transition flex items-center justify-center gap-1">
+                                class="w-full bg-darkTeal hover:bg-opacity-90 text-black text-xs font-semibold py-1.5 rounded transition flex items-center justify-center gap-1">
                                 <span>Load {{ key|upper }}</span>
                                 <span id="ind-{{ key }}" class="htmx-indicator animate-spin">🌀</span>
                             </button>
@@ -130,7 +131,7 @@
             </div>
 
             <button hx-post="/run-audit" hx-target="#audit-results" hx-indicator="#audit-spinner"
-                class="bg-skyBlue hover:bg-opacity-90 text-darkTeal font-bold px-6 py-2.5 rounded-lg text-sm transition shadow-sm flex items-center gap-2">
+                class="bg-skyBlue hover:bg-opacity-90 text-black font-bold px-6 py-2.5 rounded-lg text-sm transition shadow-sm flex items-center gap-2">
                 <span>Click here to get ready sat file </span>
                 <span id="audit-spinner" class="htmx-indicator animate-spin">🌀</span>
             </button>

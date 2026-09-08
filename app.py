@@ -17,8 +17,11 @@ templates = Jinja2Templates(directory=templates_path)
 conn = duckdb.connect(database=":memory:")
 
 # Maximize performance on a 16 GB system
-conn.execute("SET max_memory = '3GB'")   # Allocates 4 GB specifically to DuckDB
-conn.execute("SET threads = 8")          # Allows multi-threaded execution (adjust based on your CPU cores)
+# Allocates 3 GB specifically to DuckDB
+#conn.execute("SET max_memory = '3GB'")
+# Allows multi-threaded execution (adjust based on your CPU cores)
+#conn.execute("SET threads = 4")
+
 # Task progress tracker store: {task_id: {"percent": int, "status": str, "result_html": str, "completed": bool, "error": str}}
 PROGRESS_STORE: Dict[str, Dict[str, Any]] = {}
 
@@ -49,9 +52,27 @@ def update_progress(task_id: str, percent: int, status: str, result_html: str = 
     }
 
 
-# ==========================================
-# 🛠️ BACKEND INGESTION ENGINE WITH PROGRESS
-# ==========================================
+def drop_all_indexes(db):
+    """Dynamically drops all user-created indexes from DuckDB safely."""
+    try:
+        # Query duckdb_indexes using available column schema
+        indexes = db.execute(
+            "SELECT index_name FROM duckdb_indexes() WHERE is_primary = FALSE;"
+        ).fetchall()
+        for (idx_name,) in indexes:
+            if idx_name:
+                db.execute(f'DROP INDEX IF EXISTS "{idx_name}";')
+    except Exception:
+        # Fallback query using internal catalog table if duckdb_indexes() schema varies
+        try:
+            indexes = db.execute(
+                "SELECT indexname FROM pg_indexes WHERE schemaname = 'main';"
+            ).fetchall()
+            for (idx_name,) in indexes:
+                if idx_name:
+                    db.execute(f'DROP INDEX IF EXISTS "{idx_name}";')
+        except Exception as e:
+            print(f"Warning: Could not clear indexes: {e}")
 
 
 def bg_ingest_file_or_folder(task_id: str, dataset_key: str, file_path: str = None, folder_path: str = None):
@@ -128,15 +149,17 @@ def bg_build_reconciliation_output(task_id: str):
     try:
         db = conn.cursor()
 
-        # Step 1: Base WFM creation from SSR
+        # Step 1: Drop indexes & Base WFM creation from SSR
         update_progress(
-            task_id, 10, "Stage 1/8: Creating base WFM table from Approved SSR records...")
+            task_id, 10, "Stage 1/8: Dropping existing indexes & Creating base WFM table from Approved SSR records...")
+        drop_all_indexes(db)
+
         db.execute("""
             CREATE OR REPLACE TABLE WFM AS
             SELECT 
                 "Consumer Number" AS CONSUMER_NUMBER,
                 "SSR_New Meter Number" AS METER_NUMBER,
-                "Installation Date" AS INSTALLATION_DATE,
+                "Installation Date" AS INSTALLATION_DATE
             FROM SSR
             WHERE "MDM Status" = 'Approve';
         """)
@@ -145,8 +168,8 @@ def bg_build_reconciliation_output(task_id: str):
         update_progress(
             task_id, 25, "Stage 2/8: Merging Approved NSC & MI records into WFM...")
         db.execute("""
-            INSERT INTO WFM (CONSUMER_NUMBER, METER_NUMBER,INSTALLATION_DATE)
-            SELECT NSC.permanent_consumer_no, NSC.new_meter_number , NSC.installation_date as INSTALLATION_DATE
+            INSERT INTO WFM (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE)
+            SELECT NSC.permanent_consumer_no, NSC.new_meter_number, NSC.installation_date as INSTALLATION_DATE
             FROM NSC
             WHERE NOT EXISTS (
                 SELECT 1 FROM WFM
@@ -155,8 +178,8 @@ def bg_build_reconciliation_output(task_id: str):
                   AND api_MDM_status = 'Approve'
             );
 
-            INSERT INTO WFM (CONSUMER_NUMBER, METER_NUMBER,INSTALLATION_DATE)
-            SELECT MI."Consumer Number", MI."Consumer Number",MI."Installation Date" AS INSTALLATION_DATE
+            INSERT INTO WFM (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE)
+            SELECT MI."Consumer Number", MI."Consumer Number", MI."Installation Date" AS INSTALLATION_DATE
             FROM MI
             WHERE NOT EXISTS (
                 SELECT 1 FROM WFM
@@ -170,8 +193,8 @@ def bg_build_reconciliation_output(task_id: str):
         update_progress(
             task_id, 40, "Stage 3/8: Indexing SAT table & removing matching records...")
         db.execute("""
-            CREATE INDEX idx_sat_consumer ON sat ("consumer number");
-            CREATE INDEX idx_sat_meter ON sat ("meter no");
+            CREATE INDEX IF NOT EXISTS idx_sat_consumer ON sat ("consumer number");
+            CREATE INDEX IF NOT EXISTS idx_sat_meter ON sat ("meter no");
 
             DELETE FROM WFM w
             WHERE EXISTS (SELECT 1 FROM sat s WHERE s."consumer number" = w.CONSUMER_NUMBER)
@@ -182,8 +205,8 @@ def bg_build_reconciliation_output(task_id: str):
         update_progress(
             task_id, 50, "Stage 4/8: Indexing FIT table & removing matching records...")
         db.execute("""
-            CREATE INDEX idx_fit_consumer ON fit ("consumer number");
-            CREATE INDEX idx_fit_meter ON fit ("meter no");
+            CREATE INDEX IF NOT EXISTS idx_fit_consumer ON fit ("consumer number");
+            CREATE INDEX IF NOT EXISTS idx_fit_meter ON fit ("meter no");
 
             DELETE FROM WFM w
             WHERE EXISTS (SELECT 1 FROM fit s WHERE s."consumer number" = w.CONSUMER_NUMBER)
@@ -194,20 +217,20 @@ def bg_build_reconciliation_output(task_id: str):
         update_progress(
             task_id, 65, "Stage 5/8: Validating against MDM, MDS, and CP master lists...")
         db.execute("""
-            CREATE INDEX idx_MDM_consumer ON MDM ("ConsumerNumber");
-            CREATE INDEX idx_MDM_meter ON MDM ("DeviceSerialNumber");
+            CREATE INDEX IF NOT EXISTS idx_MDM_consumer ON MDM ("ConsumerNumber");
+            CREATE INDEX IF NOT EXISTS idx_MDM_meter ON MDM ("DeviceSerialNumber");
             DELETE FROM WFM w WHERE NOT EXISTS (
                 SELECT 1 FROM MDM s WHERE s."ConsumerNumber" = w.CONSUMER_NUMBER AND s."DeviceSerialNumber" = w.METER_NUMBER
             );
 
-            CREATE INDEX idx_MDS_consumer ON MDS ("Consumer No");
-            CREATE INDEX idx_MDS_meter ON MDS ("Meter No");
+            CREATE INDEX IF NOT EXISTS idx_MDS_consumer ON MDS ("Consumer No");
+            CREATE INDEX IF NOT EXISTS idx_MDS_meter ON MDS ("Meter No");
             DELETE FROM WFM w WHERE NOT EXISTS (
                 SELECT 1 FROM MDS s WHERE s."Consumer No" = w.CONSUMER_NUMBER AND s."Meter No" = w.METER_NUMBER
             );
 
-            CREATE INDEX idx_CP_consumer ON CP ("consumer_no");
-            CREATE INDEX idx_CP_meter ON CP ("meter_no");
+            CREATE INDEX IF NOT EXISTS idx_CP_consumer ON CP ("consumer_no");
+            CREATE INDEX IF NOT EXISTS idx_CP_meter ON CP ("meter_no");
             DELETE FROM WFM w WHERE NOT EXISTS (
                 SELECT 1 FROM CP s WHERE s."consumer_no" = w.CONSUMER_NUMBER AND s."meter_no" = w.METER_NUMBER
             );
@@ -243,7 +266,7 @@ def bg_build_reconciliation_output(task_id: str):
                 FROM dp_unpivoted GROUP BY meter_no, type
             )
             SELECT dp.* EXCLUDE (meter_no), COALESCE(a.RECIEVED, 0) AS RECIEVED, COALESCE(a.EXPECTED, 0) AS EXPECTED,
-                   ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE , w.INSTALLATION_DATE
+                   ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE, w.INSTALLATION_DATE
             FROM WFM w
             LEFT JOIN DP_clean dp ON w.METER_NUMBER = dp.meter_no
             LEFT JOIN dp_aggregated a ON dp.meter_no = a.meter_no AND dp.type IS NOT DISTINCT FROM a.type;
@@ -258,9 +281,9 @@ def bg_build_reconciliation_output(task_id: str):
             lp_aggregated AS (
                 SELECT meter_no, COUNT(DISTINCT date_col) * 48 AS EXPECTED, SUM(TRY_CAST(val AS INTEGER)) AS RECIEVED
                 FROM lp_unpivoted GROUP BY meter_no
-            )                                         
+            )
             SELECT lp.* EXCLUDE (meter_no), COALESCE(a.RECIEVED, 0) AS RECIEVED, COALESCE(a.EXPECTED, 0) AS EXPECTED,
-                   ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE,w.INSTALLATION_DATE
+                   ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE, w.INSTALLATION_DATE
             FROM WFM w
             LEFT JOIN LP_clean lp ON w.METER_NUMBER = lp.meter_no
             LEFT JOIN lp_aggregated a ON lp.meter_no = a.meter_no;
@@ -277,15 +300,15 @@ def bg_build_reconciliation_output(task_id: str):
                 FROM bp_unpivoted GROUP BY meter_no
             )
             SELECT bp.* EXCLUDE (meter_no), COALESCE(a.RECIEVED, 0) AS RECIEVED, COALESCE(a.EXPECTED, 0) AS EXPECTED,
-                   ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE , w.INSTALLATION_DATE
+                   ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE, w.INSTALLATION_DATE
             FROM WFM w
             LEFT JOIN BP_clean bp ON w.METER_NUMBER = bp.meter_no
             LEFT JOIN bp_aggregated a ON bp.meter_no = a.meter_no;
         """)
 
-        # Step 8: Exporting CSV files
+        # Step 8: Exporting CSV files & Final Cleanup
         update_progress(
-            task_id, 95, "Stage 8/8: Exporting audit results to CSV files...")
+            task_id, 95, "Stage 8/8: Exporting audit results to CSV files and cleaning indexes...")
         exports = {
             "Final_LP": "final_lp.csv",
             "Final_BP": "final_bp.csv",
@@ -296,7 +319,10 @@ def bg_build_reconciliation_output(task_id: str):
             db.execute(
                 f"COPY {table} TO '{output_path}' (HEADER, DELIMITER ',')")
 
-            temp_tables = ["LP_clean", "DP_clean", "BP_clean", "WFM"]
+        # Drop all indexes at the final step
+        drop_all_indexes(db)
+
+        temp_tables = ["LP_clean", "DP_clean", "BP_clean", "WFM"]
         for tbl in temp_tables:
             db.execute(f"DROP TABLE IF EXISTS {tbl}")
 
@@ -316,7 +342,7 @@ def bg_build_reconciliation_output(task_id: str):
         <div class="space-y-4">
             <div class="flex flex-wrap items-center justify-between gap-3 bg-[#4A4A4A] p-4 rounded-lg border border-[#CBCBCB]">
                 <span class="text-xs text-[#FFFFE3] font-semibold tracking-wide">
-                    ✨ Reconciliation Audit Complete. Final Outputs Ready for Download:
+                     Final Outputs Ready for Download:
                 </span>
                 <div class="flex items-center gap-2">
                     <a href="/download-csv/lp" class="px-3.5 py-2 bg-[#6D8196] hover:bg-[#6D8196]/80 text-[#FFFFE3] text-xs font-bold rounded-md shadow-sm flex items-center gap-1.5 transition">
@@ -478,4 +504,5 @@ async def download_csv(table_key: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    # Added reload=True and string module path so changes update instantly
+    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
