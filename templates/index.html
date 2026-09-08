@@ -16,7 +16,7 @@
                 extend: {
                     colors: {
                         darkTeal: '#000000',
-                        slateGray: '#778899',
+                        slateGray: '#000000',
                         lightCream: '#F4F1EA',
                         blue: '#6D8196',
                         softBlue: '#ADC8E6',
@@ -87,7 +87,7 @@
 
                 {% for key, label, input_type, placeholder in cards %}
                 <div
-                    class="bg-blue/30 p-4 rounded-lg border border-slateGray/20 hover:border-skyBlue transition-colors flex flex-col justify-between">
+                    class="bg-blue p-4 rounded-lg border border-slateGray/20 hover:border-skyBlue transition-colors flex flex-col justify-between">
                     <div>
                         <div class="flex items-center justify-between mb-2">
                             <h3 class="text-sm font-bold text-darkTeal">{{ label }}</h3>
