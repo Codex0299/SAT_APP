@@ -3,3 +3,4 @@ uvicorn[standard]
 duckdb
 jinja2
 python-multipart
+aiofiles
