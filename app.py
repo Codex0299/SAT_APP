@@ -134,7 +134,7 @@ def bg_ingest_file_or_folder(task_id: str, dataset_key: str, file_path: str = No
 
         success_html = f"""
         <div class="text-xs text-[#FFFFE3] bg-[#6D8196]/30 px-2.5 py-1.5 rounded border border-[#6D8196] font-medium">
-            ✅ Ingested <code>{table_name}</code> ({count:,} records)
+            created <code>{table_name} in memory</code> ({count:,} records)
         </div>
         """
         update_progress(task_id, 100, "Done!", result_html=success_html)
