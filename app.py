@@ -271,7 +271,7 @@ def bg_build_reconciliation_output(task_id: str):
                 FROM dp_unpivoted GROUP BY meter_no, type
             )
             SELECT dp.* EXCLUDE (meter_no), COALESCE(a.RECIEVED, 0) AS RECIEVED, COALESCE(a.EXPECTED, 0) AS EXPECTED,
-                   ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE, w.INSTALLATION_DATE, w.Source, w.consumer_number as WFM_CONSUMER, w.consumer_number as MDM_CONSUMER, w.consumer_number as MDS_CONSUMER
+                   ROUND((COALESCE(a.RECIEVED, 0) * 100) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE, w.INSTALLATION_DATE, w.Source, w.consumer_number as WFM_CONSUMER, w.consumer_number as MDM_CONSUMER, w.consumer_number as MDS_CONSUMER
             FROM WFM w
             LEFT JOIN DP_clean dp ON w.METER_NUMBER = dp.meter_no
             LEFT JOIN dp_aggregated a ON dp.meter_no = a.meter_no AND dp.type IS NOT DISTINCT FROM a.type;
@@ -288,7 +288,7 @@ def bg_build_reconciliation_output(task_id: str):
                 FROM lp_unpivoted GROUP BY meter_no
             )
             SELECT lp.*, COALESCE(a.RECIEVED, 0) AS RECIEVED, COALESCE(a.EXPECTED, 0) AS EXPECTED,
-                   ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE, w.INSTALLATION_DATE,w.Source, w.consumer_number as WFM_CONSUMER, w.consumer_number as MDM_CONSUMER, w.consumer_number as MDS_CONSUMER
+                   ROUND((COALESCE(a.RECIEVED, 0) * 100) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE, w.INSTALLATION_DATE,w.Source, w.consumer_number as WFM_CONSUMER, w.consumer_number as MDM_CONSUMER, w.consumer_number as MDS_CONSUMER
             FROM WFM w
             LEFT JOIN LP_clean lp ON w.METER_NUMBER = lp.meter_no
             LEFT JOIN lp_aggregated a ON lp.meter_no = a.meter_no;
@@ -305,7 +305,7 @@ def bg_build_reconciliation_output(task_id: str):
                 FROM bp_unpivoted GROUP BY meter_no
             )
             SELECT bp.* EXCLUDE (meter_no), COALESCE(a.RECIEVED, 0) AS RECIEVED, COALESCE(a.EXPECTED, 0) AS EXPECTED,
-                   ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE, w.INSTALLATION_DATE, w.Source, w.consumer_number as WFM_CONSUMER, w.consumer_number as MDM_CONSUMER, w.consumer_number as MDS_CONSUMER
+                   ROUND((COALESCE(a.RECIEVED, 0) * 100) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE, w.INSTALLATION_DATE, w.Source, w.consumer_number as WFM_CONSUMER, w.consumer_number as MDM_CONSUMER, w.consumer_number as MDS_CONSUMER
             FROM WFM w
             LEFT JOIN BP_clean bp ON w.METER_NUMBER = bp.meter_no
             LEFT JOIN bp_aggregated a ON bp.meter_no = a.meter_no;
@@ -332,7 +332,8 @@ def bg_build_reconciliation_output(task_id: str):
                 END AS "Type"
 
             from LP_1
-            left join rf on LP_1.meter_no = rf."meter_serial_number";
+            left join rf on LP_1.meter_no = rf."meter_serial_number"
+            order by cluster, WFM_CONSUMER, meter_no;
 
 
 
