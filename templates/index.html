@@ -71,20 +71,20 @@
 
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
 
-                <!-- Helper Card Macro -->
+                <!-- Helper Card Macro with Cross-Platform Sample Placeholders -->
                 {% set cards = [
-                ('MI', 'MI Table (Parquet File)', 'file', 'C:/data/mi.parquet'),
-                ('NSC', 'NSC Table (Parquet File)', 'file', 'C:/data/nsc.parquet'),
-                ('SSR', 'SSR Table (Parquet File)', 'file', 'C:/data/ssr.parquet'),
-                ('sat_combined', 'SAT Combined (Parquet File)', 'file', 'C:/data/sat.parquet'),
-                ('fit_combined', 'FIT Combined (Parquet File)', 'file', 'C:/data/fit.parquet'),
-                ('MDM', 'MDM Folder (CSV Folder)', 'folder', 'C:/data/mdm_folder'),
-                ('MDS', 'MDS Folder (CSV Folder)', 'folder', 'C:/data/mds_folder'),
-                ('CP', 'CP Folder (CSV Folder)', 'folder', 'C:/data/cp_folder'),
-                ('lp', 'LP Raw Folder (Datewise CSVs)', 'folder', 'C:/data/lp_folder'),
-                ('dp', 'DP Raw Folder (Datewise CSVs)', 'folder', 'C:/data/dp_folder'),
-                ('bp', 'BP Raw Folder (Datewise CSVs)', 'folder', 'C:/data/bp_folder'),
-                ('rf', 'RF Raw File (CSV folder)', 'folder', 'C:/data/rf.csv')
+                ('MI', 'MI Table (Parquet File)', 'file', './data/mi.parquet'),
+                ('NSC', 'NSC Table (Parquet File)', 'file', './data/nsc.parquet'),
+                ('SSR', 'SSR Table (Parquet File)', 'file', './data/ssr.parquet'),
+                ('sat_combined', 'SAT Combined (Parquet File)', 'file', './data/sat.parquet'),
+                ('fit_combined', 'FIT Combined (Parquet File)', 'file', './data/fit.parquet'),
+                ('MDM', 'MDM Folder (CSV Folder)', 'folder', './data/mdm_folder'),
+                ('MDS', 'MDS Folder (CSV Folder)', 'folder', './data/mds_folder'),
+                ('CP', 'CP Folder (CSV Folder)', 'folder', './data/cp_folder'),
+                ('lp', 'LP Raw Folder (Datewise CSVs)', 'folder', './data/lp_folder'),
+                ('dp', 'DP Raw Folder (Datewise CSVs)', 'folder', './data/dp_folder'),
+                ('bp', 'BP Raw Folder (Datewise CSVs)', 'folder', './data/bp_folder'),
+                ('rf', 'RF Raw File (CSV folder)', 'folder', './data/rf.csv')
                 ] %}
 
                 {% for key, label, input_type, placeholder in cards %}

@@ -1,31 +1,29 @@
-import os
 import glob
+import os
+from pathlib import Path
+from typing import Any, Dict, Union
 import uuid
+
 import duckdb
-from typing import Dict, Any
-from fastapi import FastAPI, Request, BackgroundTasks
+from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
+
 from routes_debug import get_debug_router
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-templates_path = os.path.join(BASE_DIR, "templates")
+# Use Pathlib for reliable cross-platform base path resolution
+BASE_DIR = Path(__file__).resolve().parent
+TEMPLATES_PATH = BASE_DIR / "templates"
 
 app = FastAPI()
-templates = Jinja2Templates(directory=templates_path)
+templates = Jinja2Templates(directory=str(TEMPLATES_PATH))
 
 # In-memory DuckDB connection
 conn = duckdb.connect(database=":memory:")
 
 app.include_router(get_debug_router(conn))
 
-# Maximize performance on a 16 GB system
-# Allocates 3 GB specifically to DuckDB
-# conn.execute("SET max_memory = '3GB'")
-# Allows multi-threaded execution (adjust based on your CPU cores)
-# conn.execute("SET threads = 4")
-
-# Task progress tracker store: {task_id: {"percent": int, "status": str, "result_html": str, "completed": bool, "error": str}}
+# Task progress tracker store
 PROGRESS_STORE: Dict[str, Dict[str, Any]] = {}
 
 # Map of exact required datasets and their schema tables
@@ -45,21 +43,34 @@ DATASET_CONFIG = {
 }
 
 
-def update_progress(task_id: str, percent: int, status: str, result_html: str = "", error: str = None):
+def normalize_path(raw_path: Union[str, Path]) -> str:
+    """Utility to convert any raw path string or Path object into standard POSIX format for DuckDB."""
+    if not raw_path:
+        return ""
+    clean_path = str(raw_path).strip('\'" ').strip()
+    return Path(clean_path).as_posix()
+
+
+def update_progress(
+    task_id: str,
+    percent: int,
+    status: str,
+    result_html: str = "",
+    error: str = None,
+):
     """Updates global task state for HTMX polling."""
     PROGRESS_STORE[task_id] = {
         "percent": min(percent, 100),
         "status": status,
         "result_html": result_html,
         "completed": percent >= 100 or error is not None,
-        "error": error
+        "error": error,
     }
 
 
 def drop_all_indexes(db):
     """Dynamically drops all user-created indexes from DuckDB safely."""
     try:
-        # Query duckdb_indexes using available column schema
         indexes = db.execute(
             "SELECT index_name FROM duckdb_indexes() WHERE is_primary = FALSE;"
         ).fetchall()
@@ -67,7 +78,6 @@ def drop_all_indexes(db):
             if idx_name:
                 db.execute(f'DROP INDEX IF EXISTS "{idx_name}";')
     except Exception:
-        # Fallback query using internal catalog table if duckdb_indexes() schema varies
         try:
             indexes = db.execute(
                 "SELECT indexname FROM pg_indexes WHERE schemaname = 'main';"
@@ -79,56 +89,76 @@ def drop_all_indexes(db):
             print(f"Warning: Could not clear indexes: {e}")
 
 
-def bg_ingest_file_or_folder(task_id: str, dataset_key: str, file_path: str = None, folder_path: str = None):
+def bg_ingest_file_or_folder(
+    task_id: str,
+    dataset_key: str,
+    file_path: str = None,
+    folder_path: str = None,
+):
     """Background worker function for file/folder ingestion with stage progress updates."""
     try:
         db = conn.cursor()
         config = DATASET_CONFIG[dataset_key]
         table_name = config["table"]
 
-        if folder_path:
-            folder_path = folder_path.strip('\'" ').strip().replace("\\", "/")
-        if file_path:
-            file_path = file_path.strip('\'" ').strip().replace("\\", "/")
+        norm_folder = normalize_path(folder_path) if folder_path else None
+        norm_file = normalize_path(file_path) if file_path else None
 
         update_progress(
-            task_id, 10, f"Preparing target table <code>{table_name}</code>...")
+            task_id, 10, f"Preparing target table <code>{table_name}</code>..."
+        )
         db.execute(f"DROP TABLE IF EXISTS {table_name}")
 
-        if config["type"] == "parquet" and file_path:
+        if config["type"] == "parquet" and norm_file:
             update_progress(
-                task_id, 40, f"Reading Parquet file for {table_name}...")
+                task_id, 40, f"Reading Parquet file for {table_name}..."
+            )
             db.execute(
-                f"CREATE TABLE {table_name} AS SELECT * FROM read_parquet('{file_path}')")
-            update_progress(task_id, 90, f"Finalizing table structure...")
+                f"CREATE TABLE {table_name} AS SELECT * FROM read_parquet('{norm_file}')"
+            )
+            update_progress(task_id, 90, "Finalizing table structure...")
 
-        elif config["type"] in ["csv_folder", "datewise_csv"] and folder_path:
-            pattern = f"{folder_path}/*.csv" if config["type"] == "csv_folder" else f"{folder_path}/**/*.csv"
-            all_files = glob.glob(pattern, recursive=(
-                config["type"] == "datewise_csv"))
+        elif config["type"] in ["csv_folder", "datewise_csv"] and norm_folder:
+            pattern = (
+                os.path.join(norm_folder, "*.csv")
+                if config["type"] == "csv_folder"
+                else os.path.join(norm_folder, "**", "*.csv")
+            )
+            all_files = glob.glob(pattern, recursive=(config["type"] == "datewise_csv"))
 
             total_files = len(all_files)
             if total_files == 0:
                 update_progress(
-                    task_id, 100, "", error=f"No CSV files found in folder path: <code>{folder_path}</code>")
+                    task_id,
+                    100,
+                    "",
+                    error=f"No CSV files found in folder path: <code>{norm_folder}</code>",
+                )
                 return
 
             update_progress(
-                task_id, 20, f"Found {total_files} CSV file(s). Creating base table...")
+                task_id,
+                20,
+                f"Found {total_files} CSV file(s). Creating base table...",
+            )
 
-            # Batch process files with union_by_name=true to avoid generating unwanted filename columns
             for idx, fpath in enumerate(all_files, start=1):
-                clean_fpath = fpath.replace("\\", "/")
+                clean_fpath = normalize_path(fpath)
                 pct = int(20 + ((idx / total_files) * 75))
                 update_progress(
-                    task_id, pct, f"Ingesting file {idx} of {total_files} ({pct}%)...")
+                    task_id,
+                    pct,
+                    f"Ingesting file {idx} of {total_files} ({pct}%)...",
+                )
 
                 if idx == 1:
                     db.execute(
-                        f"CREATE TABLE {table_name} AS SELECT * FROM read_csv_auto('{clean_fpath}', union_by_name=true, ignore_errors=true)")
+                        f"CREATE TABLE {table_name} AS SELECT * FROM read_csv_auto('{clean_fpath}', union_by_name=true, ignore_errors=true)"
+                    )
                 else:
                     db.execute(
-                        f"INSERT INTO {table_name} BY NAME SELECT * FROM read_csv_auto('{clean_fpath}', union_by_name=true, ignore_errors=true)")
+                        f"INSERT INTO {table_name} BY NAME SELECT * FROM read_csv_auto('{clean_fpath}', union_by_name=true, ignore_errors=true)"
+                    )
 
         count = db.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
 
@@ -143,11 +173,6 @@ def bg_ingest_file_or_folder(task_id: str, dataset_key: str, file_path: str = No
         update_progress(task_id, 100, "Error", error=str(e))
 
 
-# ==========================================
-# 🛠️ RECONCILIATION ENGINE WITH PROGRESS
-# ==========================================
-
-
 def bg_build_reconciliation_output(task_id: str):
     """Executes the reconciliation pipeline with stage progress updates."""
     try:
@@ -155,7 +180,11 @@ def bg_build_reconciliation_output(task_id: str):
 
         # Step 1: Drop indexes & Base WFM creation from SSR
         update_progress(
-            task_id, 10, "Stage 1/8: Dropping existing indexes & Creating base WFM table from Approved SSR records...")
+            task_id,
+            10,
+            "Stage 1/8: Dropping existing indexes & Creating base WFM table"
+            " from Approved SSR records...",
+        )
         drop_all_indexes(db)
 
         db.execute("""
@@ -171,7 +200,8 @@ def bg_build_reconciliation_output(task_id: str):
 
         # Step 2: Merge NSC and MI records
         update_progress(
-            task_id, 25, "Stage 2/8: Merging Approved NSC & MI records into WFM...")
+            task_id, 25, "Stage 2/8: Merging Approved NSC & MI records into WFM..."
+        )
         db.execute("""
             INSERT INTO WFM (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE, Source)
             SELECT NSC.permanent_consumer_no, NSC.new_meter_number, NSC.installation_date as INSTALLATION_DATE, 'NSC' as Source
@@ -196,7 +226,8 @@ def bg_build_reconciliation_output(task_id: str):
 
         # Step 3: Filter SAT records
         update_progress(
-            task_id, 40, "Stage 3/8: Indexing SAT table & removing matching records...")
+            task_id, 40, "Stage 3/8: Indexing SAT table & removing matching records..."
+        )
         db.execute("""
             CREATE INDEX IF NOT EXISTS idx_sat_consumer ON sat ("consumer number");
             CREATE INDEX IF NOT EXISTS idx_sat_meter ON sat ("meter no");
@@ -208,7 +239,8 @@ def bg_build_reconciliation_output(task_id: str):
 
         # Step 4: Filter FIT records
         update_progress(
-            task_id, 50, "Stage 4/8: Indexing FIT table & removing matching records...")
+            task_id, 50, "Stage 4/8: Indexing FIT table & removing matching records..."
+        )
         db.execute("""
             CREATE INDEX IF NOT EXISTS idx_fit_consumer ON fit ("consumer number");
             CREATE INDEX IF NOT EXISTS idx_fit_meter ON fit ("meter no");
@@ -220,7 +252,10 @@ def bg_build_reconciliation_output(task_id: str):
 
         # Step 5: MDM, MDS, CP validation filtering
         update_progress(
-            task_id, 65, "Stage 5/8: Validating against MDM, MDS, and CP master lists...")
+            task_id,
+            65,
+            "Stage 5/8: Validating against MDM, MDS, and CP master lists...",
+        )
         db.execute("""
             CREATE INDEX IF NOT EXISTS idx_MDM_consumer ON MDM ("ConsumerNumber");
             CREATE INDEX IF NOT EXISTS idx_MDM_meter ON MDM ("DeviceSerialNumber");
@@ -243,7 +278,10 @@ def bg_build_reconciliation_output(task_id: str):
 
         # Step 6: Clean meter serial strings
         update_progress(
-            task_id, 75, "Stage 6/8: Cleaning meter device prefixes across LP, DP, BP...")
+            task_id,
+            75,
+            "Stage 6/8: Cleaning meter device prefixes across LP, DP, BP...",
+        )
         db.execute("""
             CREATE OR REPLACE TABLE LP_clean AS
             SELECT *, REGEXP_REPLACE(devicename, '^(ISK|LNT)[-_]?', '', 'i') AS meter_no FROM lp;
@@ -257,7 +295,10 @@ def bg_build_reconciliation_output(task_id: str):
 
         # Step 7: Unpivot and calculate Final DP, LP, BP metrics
         update_progress(
-            task_id, 85, "Stage 7/8: Unpivoting date columns and calculating completion ratios...")
+            task_id,
+            85,
+            "Stage 7/8: Unpivoting date columns and calculating completion ratios...",
+        )
         db.execute("""
             -- Final DP
             CREATE OR REPLACE TABLE Final_DP AS
@@ -310,73 +351,71 @@ def bg_build_reconciliation_output(task_id: str):
             LEFT JOIN BP_clean bp ON w.METER_NUMBER = bp.meter_no
             LEFT JOIN bp_aggregated a ON bp.meter_no = a.meter_no;
 
+            CREATE OR REPLACE TABLE LP_1 AS 
+            SELECT raw_lp.*, MDS."Tariff Code", MDS."Cycle No"
+            FROM raw_lp 
+            LEFT JOIN MDS ON raw_lp.WFM_CONSUMER = MDS."Consumer No" 
+            AND raw_lp.meter_no = MDS."Meter No";
 
-            create or replace table LP_1 as 
-            select  raw_lp.* , MDS."Tariff Code",MDS."Cycle No"
-            from raw_lp 
-            left join MDS on raw_lp.WFM_CONSUMER = MDS."Consumer No" 
-            and raw_lp.meter_no = MDS."Meter No";
-
-
-            create or replace table Final_LP as 
-            select LP_1.*,
-
-              case when LP_1.meter_no = rf."meter_serial_number" then 'RF' else 'Cellular'
-              end as "Communication Type",
-
-             CASE 
-                 WHEN LP_1.meter_no LIKE 'US%' THEN '1 Phase'
+            CREATE OR REPLACE TABLE Final_LP AS 
+            SELECT LP_1.*,
+              CASE WHEN LP_1.meter_no = rf."meter_serial_number" THEN 'RF' ELSE 'Cellular'
+              END AS "Communication Type",
+              CASE 
+                WHEN LP_1.meter_no LIKE 'US%' THEN '1 Phase'
                 WHEN LP_1.meter_no LIKE 'UT%' THEN '3 Phase'
                 WHEN LP_1.meter_no LIKE 'UC%' THEN 'LTCT Consumers'
                 ELSE 'Unknown'
-                END AS "Type"
-
-            from LP_1
-            left join rf on LP_1.meter_no = rf."meter_serial_number"
-            order by cluster, WFM_CONSUMER, meter_no;
-
-
-
-
-
-
-
-        
- 
-           
+              END AS "Type"
+            FROM LP_1
+            LEFT JOIN rf ON LP_1.meter_no = rf."meter_serial_number"
+            ORDER BY cluster, WFM_CONSUMER, meter_no;
         """)
 
         # Step 8: Exporting CSV files & Final Cleanup
         update_progress(
-            task_id, 95, "Stage 8/8: Exporting audit results to CSV files and cleaning indexes...")
+            task_id,
+            95,
+            "Stage 8/8: Exporting audit results to CSV files and cleaning"
+            " indexes...",
+        )
         exports = {
             "Final_LP": "final_lp.csv",
             "Final_BP": "final_bp.csv",
             "Final_DP": "final_dp.csv",
         }
         for table, filename in exports.items():
-            output_path = os.path.join(BASE_DIR, filename)
-            db.execute(
-                f"COPY {table} TO '{output_path}' (HEADER, DELIMITER ',')")
+            output_path = normalize_path(BASE_DIR / filename)
+            db.execute(f"COPY {table} TO '{output_path}' (HEADER, DELIMITER ',')")
 
-        # Drop all indexes at the final step
         drop_all_indexes(db)
 
         temp_tables = ["LP_clean", "DP_clean", "BP_clean", "WFM"]
         for tbl in temp_tables:
             db.execute(f"DROP TABLE IF EXISTS {tbl}")
 
-        # Force DuckDB memory garbage collection
         db.execute("CHECKPOINT;")
 
-        columns = [col[0]
-                   for col in db.execute("DESCRIBE Final_DP").fetchall()]
+        columns = [
+            col[0] for col in db.execute("DESCRIBE Final_DP").fetchall()
+        ]
         rows = db.execute("SELECT * FROM Final_DP LIMIT 100").fetchall()
 
-        header = "".join(
-            [f'<th class="p-2 border-b border-[#CBCBCB]/30 bg-[#4A4A4A] text-[#FFFFE3] text-left font-semibold">{c}</th>' for c in columns])
-        body = "".join(
-            [f"<tr class=\"hover:bg-[#4A4A4A]/50 transition\">{''.join([f'<td class=\"p-2 border-b border-[#CBCBCB]/20 text-[#FFFFE3]/90\">{v}</td>' for v in r])}</tr>" for r in rows])
+        header = "".join([
+            f'<th class="p-2 border-b border-[#CBCBCB]/30 bg-[#4A4A4A]'
+            f' text-[#FFFFE3] text-left font-semibold">{c}</th>'
+            for c in columns
+        ])
+        body = "".join([
+            '<tr class="hover:bg-[#4A4A4A]/50 transition">'
+            + "".join([
+                '<td class="p-2 border-b border-[#CBCBCB]/20'
+                f' text-[#FFFFE3]/90">{v}</td>'
+                for v in r
+            ])
+            + "</tr>"
+            for r in rows
+        ])
 
         final_html = f"""
         <div class="space-y-4">
@@ -430,16 +469,16 @@ async def get_progress(task_id: str):
     task = PROGRESS_STORE.get(task_id)
 
     if not task:
-        return '<p class="text-red-400 text-xs">Task state missing or expired.</p>'
+        return (
+            '<p class="text-red-400 text-xs">Task state missing or expired.</p>'
+        )
 
     if task["error"]:
         return f'<div class="text-red-300 text-xs p-3 bg-red-950/40 rounded border border-red-500/40">Execution Error: {task["error"]}</div>'
 
     if task["completed"]:
-        # Return final HTML output when task finishes
         return task["result_html"]
 
-    # Return HTMX progress component with auto-poll trigger
     pct = task["percent"]
     status_msg = task["status"]
 
@@ -463,11 +502,13 @@ async def get_progress(task_id: str):
 
 
 @app.post("/ingest/{dataset_key}", response_class=HTMLResponse)
-async def handle_ingestion(dataset_key: str, request: Request, bg_tasks: BackgroundTasks):
+async def handle_ingestion(
+    dataset_key: str, request: Request, bg_tasks: BackgroundTasks
+):
     form = await request.form()
 
     if dataset_key not in DATASET_CONFIG:
-        return f'<p class="text-red-400">Invalid Dataset Key</p>'
+        return '<p class="text-red-400">Invalid Dataset Key</p>'
 
     config = DATASET_CONFIG[dataset_key]
     file_path = form.get("file_path")
@@ -478,28 +519,42 @@ async def handle_ingestion(dataset_key: str, request: Request, bg_tasks: Backgro
 
     if config["type"] == "parquet":
         if file_path and str(file_path).strip():
-            clean_path = str(file_path).strip('\'" ').replace("\\", "/")
-            bg_tasks.add_task(bg_ingest_file_or_folder, task_id,
-                              dataset_key, file_path=clean_path)
+            clean_path = normalize_path(file_path)
+            bg_tasks.add_task(
+                bg_ingest_file_or_folder,
+                task_id,
+                dataset_key,
+                file_path=clean_path,
+            )
 
         elif file and getattr(file, "filename", None):
-            temp_filename = f"temp_{file.filename}"
-            with open(temp_filename, "wb") as f:
+            temp_path = BASE_DIR / f"temp_{file.filename}"
+            with open(temp_path, "wb") as f:
                 f.write(await file.read())
-            bg_tasks.add_task(bg_ingest_file_or_folder, task_id,
-                              dataset_key, file_path=temp_filename)
+            bg_tasks.add_task(
+                bg_ingest_file_or_folder,
+                task_id,
+                dataset_key,
+                file_path=str(temp_path),
+            )
         else:
-            return f'<p class="text-amber-300 text-xs">No file or path provided.</p>'
+            return (
+                '<p class="text-amber-300 text-xs">No file or path'
+                " provided.</p>"
+            )
 
     else:
         if not folder_path or not str(folder_path).strip():
-            return f'<p class="text-amber-300 text-xs">Folder path is missing.</p>'
+            return '<p class="text-amber-300 text-xs">Folder path is missing.</p>'
 
-        clean_folder = str(folder_path).strip('\'" ').replace("\\", "/")
-        bg_tasks.add_task(bg_ingest_file_or_folder, task_id,
-                          dataset_key, folder_path=clean_folder)
+        clean_folder = normalize_path(folder_path)
+        bg_tasks.add_task(
+            bg_ingest_file_or_folder,
+            task_id,
+            dataset_key,
+            folder_path=clean_folder,
+        )
 
-    # Initialize progress store entry & return HTMX progress component
     update_progress(task_id, 0, "Starting ingestion...")
     return f"""
     <div hx-get="/progress/{task_id}" hx-trigger="load" hx-swap="outerHTML"></div>
@@ -509,10 +564,11 @@ async def handle_ingestion(dataset_key: str, request: Request, bg_tasks: Backgro
 @app.post("/run-audit", response_class=HTMLResponse)
 async def run_audit(bg_tasks: BackgroundTasks):
     task_id = str(uuid.uuid4())
-    update_progress(task_id, 0, "Initializing Reconciliation Audit Engine...")
+    update_progress(
+        task_id, 0, "Initializing Reconciliation Audit Engine..."
+    )
     bg_tasks.add_task(bg_build_reconciliation_output, task_id)
 
-    # Initial trigger component for HTMX polling
     return f"""
     <div hx-get="/progress/{task_id}" hx-trigger="load" hx-swap="outerHTML"></div>
     """
@@ -527,16 +583,21 @@ async def download_csv(table_key: str):
     }
 
     if table_key not in valid_tables:
-        return HTMLResponse('<p class="text-red-400 text-xs">Invalid export requested.</p>')
+        return HTMLResponse(
+            '<p class="text-red-400 text-xs">Invalid export requested.</p>'
+        )
 
     file_name = valid_tables[table_key]
-    file_path = os.path.join(BASE_DIR, file_name)
+    file_path = BASE_DIR / file_name
 
-    if not os.path.exists(file_path):
-        return HTMLResponse(f'<p class="text-red-400 text-xs">File <code>{file_name}</code> not found. Run the audit step first.</p>')
+    if not file_path.exists():
+        return HTMLResponse(
+            f'<p class="text-red-400 text-xs">File <code>{file_name}</code> not'
+            " found. Run the audit step first.</p>"
+        )
 
     return FileResponse(
-        path=file_path,
+        path=str(file_path),
         filename=file_name,
         media_type="text/csv",
     )
@@ -544,5 +605,5 @@ async def download_csv(table_key: str):
 
 if __name__ == "__main__":
     import uvicorn
-    # Added reload=True and string module path so changes update instantly
+
     uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
