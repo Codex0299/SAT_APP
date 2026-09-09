@@ -6,6 +6,7 @@ from typing import Dict, Any
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
+from routes_debug import get_debug_router
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates_path = os.path.join(BASE_DIR, "templates")
@@ -16,11 +17,13 @@ templates = Jinja2Templates(directory=templates_path)
 # In-memory DuckDB connection
 conn = duckdb.connect(database=":memory:")
 
+app.include_router(get_debug_router(conn))
+
 # Maximize performance on a 16 GB system
 # Allocates 3 GB specifically to DuckDB
-#conn.execute("SET max_memory = '3GB'")
+# conn.execute("SET max_memory = '3GB'")
 # Allows multi-threaded execution (adjust based on your CPU cores)
-#conn.execute("SET threads = 4")
+# conn.execute("SET threads = 4")
 
 # Task progress tracker store: {task_id: {"percent": int, "status": str, "result_html": str, "completed": bool, "error": str}}
 PROGRESS_STORE: Dict[str, Dict[str, Any]] = {}
@@ -38,6 +41,7 @@ DATASET_CONFIG = {
     "lp": {"table": "lp", "type": "datewise_csv"},
     "dp": {"table": "dp", "type": "datewise_csv"},
     "bp": {"table": "bp", "type": "datewise_csv"},
+    "rf": {"table": "rf", "type": "csv_folder"},
 }
 
 
@@ -159,7 +163,8 @@ def bg_build_reconciliation_output(task_id: str):
             SELECT 
                 "Consumer Number" AS CONSUMER_NUMBER,
                 "SSR_New Meter Number" AS METER_NUMBER,
-                "Installation Date" AS INSTALLATION_DATE
+                "Installation Date" AS INSTALLATION_DATE,
+                'SSR' as Source
             FROM SSR
             WHERE "MDM Status" = 'Approve';
         """)
@@ -168,8 +173,8 @@ def bg_build_reconciliation_output(task_id: str):
         update_progress(
             task_id, 25, "Stage 2/8: Merging Approved NSC & MI records into WFM...")
         db.execute("""
-            INSERT INTO WFM (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE)
-            SELECT NSC.permanent_consumer_no, NSC.new_meter_number, NSC.installation_date as INSTALLATION_DATE
+            INSERT INTO WFM (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE, Source)
+            SELECT NSC.permanent_consumer_no, NSC.new_meter_number, NSC.installation_date as INSTALLATION_DATE, 'NSC' as Source
             FROM NSC
             WHERE NOT EXISTS (
                 SELECT 1 FROM WFM
@@ -178,8 +183,8 @@ def bg_build_reconciliation_output(task_id: str):
                   AND api_MDM_status = 'Approve'
             );
 
-            INSERT INTO WFM (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE)
-            SELECT MI."Consumer Number", MI."Consumer Number", MI."Installation Date" AS INSTALLATION_DATE
+            INSERT INTO WFM (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE, Source)
+            SELECT MI."Consumer Number", MI."Consumer Number", MI."Installation Date" AS INSTALLATION_DATE, 'MI' as Source
             FROM MI
             WHERE NOT EXISTS (
                 SELECT 1 FROM WFM
@@ -266,13 +271,13 @@ def bg_build_reconciliation_output(task_id: str):
                 FROM dp_unpivoted GROUP BY meter_no, type
             )
             SELECT dp.* EXCLUDE (meter_no), COALESCE(a.RECIEVED, 0) AS RECIEVED, COALESCE(a.EXPECTED, 0) AS EXPECTED,
-                   ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE, w.INSTALLATION_DATE
+                   ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE, w.INSTALLATION_DATE, w.Source, w.consumer_number as WFM_CONSUMER, w.consumer_number as MDM_CONSUMER, w.consumer_number as MDS_CONSUMER
             FROM WFM w
             LEFT JOIN DP_clean dp ON w.METER_NUMBER = dp.meter_no
             LEFT JOIN dp_aggregated a ON dp.meter_no = a.meter_no AND dp.type IS NOT DISTINCT FROM a.type;
 
             -- Final LP
-            CREATE OR REPLACE TABLE Final_LP AS
+            CREATE OR REPLACE TABLE raw_lp AS
             WITH lp_unpivoted AS (
                 UNPIVOT LP_clean
                 ON COLUMNS('^\\d{4}-\\d{2}-\\d{2}$')
@@ -282,8 +287,8 @@ def bg_build_reconciliation_output(task_id: str):
                 SELECT meter_no, COUNT(DISTINCT date_col) * 48 AS EXPECTED, SUM(TRY_CAST(val AS INTEGER)) AS RECIEVED
                 FROM lp_unpivoted GROUP BY meter_no
             )
-            SELECT lp.* EXCLUDE (meter_no), COALESCE(a.RECIEVED, 0) AS RECIEVED, COALESCE(a.EXPECTED, 0) AS EXPECTED,
-                   ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE, w.INSTALLATION_DATE
+            SELECT lp.*, COALESCE(a.RECIEVED, 0) AS RECIEVED, COALESCE(a.EXPECTED, 0) AS EXPECTED,
+                   ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE, w.INSTALLATION_DATE,w.Source, w.consumer_number as WFM_CONSUMER, w.consumer_number as MDM_CONSUMER, w.consumer_number as MDS_CONSUMER
             FROM WFM w
             LEFT JOIN LP_clean lp ON w.METER_NUMBER = lp.meter_no
             LEFT JOIN lp_aggregated a ON lp.meter_no = a.meter_no;
@@ -300,10 +305,44 @@ def bg_build_reconciliation_output(task_id: str):
                 FROM bp_unpivoted GROUP BY meter_no
             )
             SELECT bp.* EXCLUDE (meter_no), COALESCE(a.RECIEVED, 0) AS RECIEVED, COALESCE(a.EXPECTED, 0) AS EXPECTED,
-                   ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE, w.INSTALLATION_DATE
+                   ROUND((COALESCE(a.RECIEVED, 0) * 100.0) / NULLIF(a.EXPECTED, 0)) AS PERCENTAGE, w.INSTALLATION_DATE, w.Source, w.consumer_number as WFM_CONSUMER, w.consumer_number as MDM_CONSUMER, w.consumer_number as MDS_CONSUMER
             FROM WFM w
             LEFT JOIN BP_clean bp ON w.METER_NUMBER = bp.meter_no
             LEFT JOIN bp_aggregated a ON bp.meter_no = a.meter_no;
+
+
+            create or replace table LP_1 as 
+            select  raw_lp.* , MDS."Tariff Code",MDS."Cycle No"
+            from raw_lp 
+            left join MDS on raw_lp.WFM_CONSUMER = MDS."Consumer No" 
+            and raw_lp.meter_no = MDS."Meter No";
+
+
+            create or replace table Final_LP as 
+            select LP_1.*,
+
+              case when LP_1.meter_no = rf."meter_serial_number" then 'RF' else 'Cellular'
+              end as "Communication Type",
+
+             CASE 
+                 WHEN LP_1.meter_no LIKE 'US%' THEN '1 Phase'
+                WHEN LP_1.meter_no LIKE 'UT%' THEN '3 Phase'
+                WHEN LP_1.meter_no LIKE 'UC%' THEN 'LTCT Consumers'
+                ELSE 'Unknown'
+                END AS "Type"
+
+            from LP_1
+            left join rf on LP_1.meter_no = rf."meter_serial_number";
+
+
+
+
+
+
+
+        
+ 
+           
         """)
 
         # Step 8: Exporting CSV files & Final Cleanup
