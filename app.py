@@ -124,7 +124,9 @@ def bg_ingest_file_or_folder(
                 if config["type"] == "csv_folder"
                 else os.path.join(norm_folder, "**", "*.csv")
             )
-            all_files = glob.glob(pattern, recursive=(config["type"] == "datewise_csv"))
+            all_files = glob.glob(
+                pattern, recursive=(config["type"] == "datewise_csv")
+            )
 
             total_files = len(all_files)
             if total_files == 0:
@@ -162,10 +164,14 @@ def bg_ingest_file_or_folder(
 
         count = db.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
 
+        # Success output + HTMX Out-of-Band Swap to set card indicator dot to blue
         success_html = f"""
-        <div class="text-xs text-[#FFFFE3] bg-[#6D8196]/30 px-2.5 py-1.5 rounded border border-[#6D8196] font-medium">
-            created <code>{table_name} in memory</code> ({count:,} records)
+        <div class="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-900/80 px-2.5 py-1.5 rounded border border-zinc-800 font-mono">
+            <span class="text-zinc-500 font-semibold">state</span>
+            <span class="text-blue-400 font-medium">created {table_name} in memory ({count:,} records)</span>
         </div>
+        <!-- Out-Of-Band Swap: Updates card indicator dot to permanent blue -->
+        <span id="dot-{dataset_key}" hx-swap-oob="true" class="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></span>
         """
         update_progress(task_id, 100, "Done!", result_html=success_html)
 
@@ -386,7 +392,8 @@ def bg_build_reconciliation_output(task_id: str):
         }
         for table, filename in exports.items():
             output_path = normalize_path(BASE_DIR / filename)
-            db.execute(f"COPY {table} TO '{output_path}' (HEADER, DELIMITER ',')")
+            db.execute(
+                f"COPY {table} TO '{output_path}' (HEADER, DELIMITER ',')")
 
         drop_all_indexes(db)
 
@@ -402,15 +409,15 @@ def bg_build_reconciliation_output(task_id: str):
         rows = db.execute("SELECT * FROM Final_DP LIMIT 100").fetchall()
 
         header = "".join([
-            f'<th class="p-2 border-b border-[#CBCBCB]/30 bg-[#4A4A4A]'
-            f' text-[#FFFFE3] text-left font-semibold">{c}</th>'
+            f'<th class="p-2 border-b border-zinc-800 bg-zinc-900'
+            f' text-zinc-200 text-left font-semibold">{c}</th>'
             for c in columns
         ])
         body = "".join([
-            '<tr class="hover:bg-[#4A4A4A]/50 transition">'
+            '<tr class="hover:bg-zinc-800/50 transition  font-mono">'
             + "".join([
-                '<td class="p-2 border-b border-[#CBCBCB]/20'
-                f' text-[#FFFFE3]/90">{v}</td>'
+                '<td class="p-2 border-b border-zinc-800/60'
+                f' text-zinc-300">{v}</td>'
                 for v in r
             ])
             + "</tr>"
@@ -419,28 +426,28 @@ def bg_build_reconciliation_output(task_id: str):
 
         final_html = f"""
         <div class="space-y-4">
-            <div class="flex flex-wrap items-center justify-between gap-3 bg-[#4A4A4A] p-4 rounded-lg border border-[#CBCBCB]">
-                <span class="text-xs text-[#FFFFE3] font-semibold tracking-wide">
+            <div class="flex flex-wrap items-center justify-between gap-3 bg-zinc-900 p-4 rounded-lg border border-zinc-800">
+                <span class="text-xs text-zinc-200 font-semibold tracking-wide">
                      Final Outputs Ready for Download:
                 </span>
                 <div class="flex items-center gap-2">
-                    <a href="/download-csv/lp" class="px-3.5 py-2 bg-[#6D8196] hover:bg-[#6D8196]/80 text-[#FFFFE3] text-xs font-bold rounded-md shadow-sm flex items-center gap-1.5 transition">
+                    <a href="/download-csv/lp" class="px-3.5 py-2 bg-white hover:bg-zinc-200 text-black text-xs font-bold rounded-md shadow-sm flex items-center gap-1.5 transition">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         Download LP
                     </a>
-                    <a href="/download-csv/bp" class="px-3.5 py-2 bg-[#6D8196] hover:bg-[#6D8196]/80 text-[#FFFFE3] text-xs font-bold rounded-md shadow-sm flex items-center gap-1.5 transition">
+                    <a href="/download-csv/bp" class="px-3.5 py-2 bg-white hover:bg-zinc-200 text-black text-xs font-bold rounded-md shadow-sm flex items-center gap-1.5 transition">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         Download BP
                     </a>
-                    <a href="/download-csv/dp" class="px-3.5 py-2 bg-[#6D8196] hover:bg-[#6D8196]/80 text-[#FFFFE3] text-xs font-bold rounded-md shadow-sm flex items-center gap-1.5 transition">
+                    <a href="/download-csv/dp" class="px-3.5 py-2 bg-white hover:bg-zinc-200 text-black text-xs font-bold rounded-md shadow-sm flex items-center gap-1.5 transition">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         Download DP
                     </a>
                 </div>
             </div>
 
-            <div class="overflow-x-auto max-h-96 border border-[#CBCBCB] rounded-lg bg-[#4A4A4A]">
-                <table class="w-full text-xs border-collapse">
+            <div class="overflow-x-auto max-h-96 border border-zinc-800 rounded-lg bg-zinc-950">
+                <table class="w-full text-xs border-collapse font-mono">
                     <thead><tr class="sticky top-0 shadow-sm">{header}</tr></thead>
                     <tbody>{body}</tbody>
                 </table>
@@ -474,7 +481,7 @@ async def get_progress(task_id: str):
         )
 
     if task["error"]:
-        return f'<div class="text-red-300 text-xs p-3 bg-red-950/40 rounded border border-red-500/40">Execution Error: {task["error"]}</div>'
+        return f'<div class="text-red-300 text-xs p-3 bg-red-950/40 rounded border border-red-500/40 font-mono">Execution Error: {task["error"]}</div>'
 
     if task["completed"]:
         return task["result_html"]
@@ -483,19 +490,19 @@ async def get_progress(task_id: str):
     status_msg = task["status"]
 
     return f"""
-    <div hx-get="/progress/{task_id}" hx-trigger="every 50ms" hx-swap="outerHTML" class="space-y-2 p-3 bg-[#4A4A4A]/50 border border-[#6D8196]/40 rounded-lg">
-        <div class="flex items-center justify-between text-xs text-[#FFFFE3]">
+    <div hx-get="/progress/{task_id}" hx-trigger="every 50ms" hx-swap="outerHTML" class="space-y-2 p-3 bg-zinc-900 border border-zinc-800 rounded-lg">
+        <div class="flex items-center justify-between text-xs text-zinc-300">
             <span class="font-medium flex items-center gap-2">
-                <svg class="animate-spin h-3.5 w-3.5 text-[#6D8196]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <svg class="animate-spin h-3.5 w-3.5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
                 {status_msg}
             </span>
-            <span class="font-bold">{pct}%</span>
+            <span class="font-mono font-bold text-zinc-100">{pct}%</span>
         </div>
-        <div class="w-full bg-[#3A3A3A] rounded-full h-2 overflow-hidden border border-[#CBCBCB]/20">
-            <div class="bg-[#6D8196] h-2 rounded-full transition-all duration-300 ease-out" style="width: {pct}%"></div>
+        <div class="w-full bg-zinc-950 rounded-full h-1.5 overflow-hidden border border-zinc-800">
+            <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-300 ease-out" style="width: {pct}%"></div>
         </div>
     </div>
     """
@@ -508,7 +515,7 @@ async def handle_ingestion(
     form = await request.form()
 
     if dataset_key not in DATASET_CONFIG:
-        return '<p class="text-red-400">Invalid Dataset Key</p>'
+        return '<p class="text-red-400 text-xs">Invalid Dataset Key</p>'
 
     config = DATASET_CONFIG[dataset_key]
     file_path = form.get("file_path")
@@ -539,13 +546,13 @@ async def handle_ingestion(
             )
         else:
             return (
-                '<p class="text-amber-300 text-xs">No file or path'
+                '<p class="text-amber-300 text-xs font-mono">No file or path'
                 " provided.</p>"
             )
 
     else:
         if not folder_path or not str(folder_path).strip():
-            return '<p class="text-amber-300 text-xs">Folder path is missing.</p>'
+            return '<p class="text-amber-300 text-xs font-mono">Folder path is missing.</p>'
 
         clean_folder = normalize_path(folder_path)
         bg_tasks.add_task(
