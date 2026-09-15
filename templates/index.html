@@ -70,7 +70,7 @@
                     <path d="M37.5274 0L75.0548 65H0L37.5274 0Z" />
                 </svg>
                 <span class="text-vercelMuted text-sm font-mono">/</span>
-                <span class="text-sm font-semibold tracking-tight text-white">sat-reconciliation-engine</span>
+                <span class="text-sm font-semibold tracking-tight text-white">sat-data-prep-engine</span>
                 <span
                     class="ml-2 px-2 py-0.5 text-[10px] font-mono rounded-full border border-zinc-800 text-zinc-400 bg-zinc-900">
                     v1.0.1
@@ -114,13 +114,13 @@
             ('SSR', 'SSR Table', 'Parquet', 'file', './data/ssr.parquet'),
             ('sat_combined', 'SAT Combined', 'Parquet', 'file', './data/sat.parquet'),
             ('fit_combined', 'FIT Combined', 'Parquet', 'file', './data/fit.parquet'),
-            ('MDM', 'MDM Master', 'CSV Dir', 'folder', './data/mdm_folder'),
-            ('MDS', 'MDS Master', 'CSV Dir', 'folder', './data/mds_folder'),
-            ('CP', 'CP Master', 'CSV Dir', 'folder', './data/cp_folder'),
+            ('MDM', 'MDM Master', 'CSV Folder', 'folder', './data/mdm_folder'),
+            ('MDS', 'MDS Master', 'CSV Folder', 'folder', './data/mds_folder'),
+            ('CP', 'CP Master', 'CSV Folder', 'folder', './data/cp_folder'),
             ('lp', 'LP Raw Profiles', 'Datewise CSVs', 'folder', './data/lp_folder'),
             ('dp', 'DP Raw Profiles', 'Datewise CSVs', 'folder', './data/dp_folder'),
             ('bp', 'BP Raw Profiles', 'Datewise CSVs', 'folder', './data/bp_folder'),
-            ('rf', 'RF Table', 'CSV Dir', 'folder', './data/rf.csv')
+            ('rf', 'RF Table', 'CSV Folder', 'folder', './data/rf.csv')
             ] %}
 
             {% for key, label, fmt, input_type, placeholder in cards %}
@@ -199,7 +199,7 @@
 
             <button hx-post="/run-audit" hx-target="#audit-results" hx-indicator="#audit-spinner"
                 class="relative z-10 bg-white hover:bg-zinc-200 text-black font-semibold px-5 py-2.5 rounded-lg text-xs transition shadow-lg flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap">
-                <span>Deploy  Computation Logic</span>
+                <span>Deploy Computation Logic</span>
                 <span id="audit-spinner" class="htmx-indicator animate-spin">🌀</span>
             </button>
         </div>
