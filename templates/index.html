@@ -28,17 +28,6 @@
     </div>
 
     <!-- Sticky Navigation -->
-<<<<<<< Updated upstream
-    <nav class="border-b border-vercelBorder bg-black/60 backdrop-blur-md sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <!-- Vercel Triangle Logo -->
-                <svg class="w-5 h-5 fill-current text-white" viewBox="0 0 76 65" fill="none">
-                    <path d="M37.5274 0L75.0548 65H0L37.5274 0Z" />
-                </svg>
-                <span class="text-vercelMuted text-sm font-mono">/</span>
-                <span class="text-sm font-semibold tracking-tight text-white">sat-data-prep-engine</span>
-=======
     <nav class="vc-nav">
         <div class="vc-container d-flex align-items-center justify-content-between w-100">
             <div class="d-flex align-items-center gap-3">
@@ -46,7 +35,6 @@
                 <img src="/static/img/logo.png" alt="SAT logo" height="32">
                 <span class="text-zinc-400 fs-7 vc-mono">/</span>
                 <span class="fs-7 fw-semibold vc-track text-navy">SAT Integration Portal</span>
->>>>>>> Stashed changes
                 <span
                     class="ms-2 px-2 py-1 text-10 vc-mono rounded-pill border border-zinc-800 text-zinc-400 bg-zinc-900">
                     v1.0.1
@@ -66,56 +54,12 @@
     <main class="vc-container">
         <div class="d-flex flex-column gap-4 py-4">
 
-<<<<<<< Updated upstream
-        <!-- Page Header -->
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-vercelBorder pb-6">
-            <div>
-                <h1 class="text-2xl font-bold tracking-tight text-black">Data Ingestion Pipelines</h1>
-                <p class="text-sm text-vercelMuted mt-1">Configure environment datasets and trigger DuckDB columnar
-                    processing.</p>
-            </div>
-
-            <!-- Quick Command Badge -->
-            <div
-                class="flex items-center gap-2 text-xs font-mono text-zinc-400 bg-zinc-900 px-3 py-1.5 rounded-md border border-zinc-800 shadow-sm relative z-10">
-                <span>Engine:</span>
-                <span class="text-zinc-200">FastAPI + Async BackgroundTasks</span>
-            </div>
-        </div>
-
-        <!-- Ingestion Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-
-            {% set cards = [
-            ('MI', 'MI Table', 'Parquet', 'file', './data/mi.parquet'),
-            ('NSC', 'NSC Table', 'Parquet', 'file', './data/nsc.parquet'),
-            ('SSR', 'SSR Table', 'Parquet', 'file', './data/ssr.parquet'),
-            ('sat_combined', 'SAT Combined', 'Parquet', 'file', './data/sat.parquet'),
-            ('fit_combined', 'FIT Combined', 'Parquet', 'file', './data/fit.parquet'),
-            ('MDM', 'MDM Master', 'CSV Folder', 'folder', './data/mdm_folder'),
-            ('MDS', 'MDS Master', 'CSV Folder', 'folder', './data/mds_folder'),
-            ('CP', 'CP Master', 'CSV Folder', 'folder', './data/cp_folder'),
-            ('lp', 'LP Raw Profiles', 'Datewise CSVs', 'folder', './data/lp_folder'),
-            ('dp', 'DP Raw Profiles', 'Datewise CSVs', 'folder', './data/dp_folder'),
-            ('bp', 'BP Raw Profiles', 'Datewise CSVs', 'folder', './data/bp_folder'),
-            ('rf', 'RF Table', 'CSV Folder', 'folder', './data/rf.csv')
-            ] %}
-
-            {% for key, label, fmt, input_type, placeholder in cards %}
-            <div
-                class="vercel-glow-card relative bg-vercelCard border border-vercelBorder hover:border-vercelBorderHover rounded-xl p-4 transition-all duration-150 flex flex-col justify-between group shadow-sm overflow-hidden">
-
-                <!-- Interactive Mouse Spotlight Layer -->
-                <div class="pointer-events-none absolute -inset-px rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-0"
-                    style="background: radial-gradient(250px circle at var(--x, 50%) var(--y, 50%), rgba(255, 255, 255, 0.12), transparent 80%);">
-=======
             <!-- Page Header -->
             <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 vc-border-bottom pb-3">
                 <div>
-                    <h6 class="fs-4 fw-bold vc-track text-navy mb-0">Data Ingestion Pipelines</h6>
+                    <h1 class="fs-4 fw-bold vc-track text-navy mb-0">Data Ingestion Pipelines</h1>
                     <p class="fs-7 text-zinc-400 mt-1 mb-0">Configure environment datasets and trigger DuckDB columnar
                         processing.</p>
->>>>>>> Stashed changes
                 </div>
 
                 <!-- Quick Command Badge -->
@@ -219,41 +163,6 @@
             <div id="audit-results" class="d-flex flex-column gap-3"></div>
 
         </div>
-<<<<<<< Updated upstream
-
-        <!-- Vercel Command Banner (Audit Execution with Spotlight Overlay) -->
-        <div
-            class="vercel-glow-card relative bg-gradient-to-b from-zinc-900 to-vercelCard border border-vercelBorder hover:border-zinc-700 rounded-xl p-6 transition-all shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 overflow-hidden">
-
-            <div class="pointer-events-none absolute -inset-px rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-0"
-                style="background: radial-gradient(400px circle at var(--x, 50%) var(--y, 50%), rgba(255, 255, 255, 0.08), transparent 80%);">
-            </div>
-
-            <div class="space-y-1.5 relative z-10">
-                <div class="flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
-                    <h2 class="text-base font-semibold text-white tracking-tight">Run 8-Stage Audit Pipeline</h2>
-                </div>
-                <p class="text-xs text-vercelMuted max-w-2xl leading-relaxed">
-                    Executes master joining logic, strips serial prefixes, calculates date UNPIVOT ratios, and
-                    writes <code class="text-zinc-300 font-mono">final_lp.csv</code>, <code
-                        class="text-zinc-300 font-mono">final_dp.csv</code>, and <code
-                        class="text-zinc-300 font-mono">final_bp.csv</code> to project root.
-                </p>
-            </div>
-
-            <button hx-post="/run-audit" hx-target="#audit-results" hx-indicator="#audit-spinner"
-                class="relative z-10 bg-white hover:bg-zinc-200 text-black font-semibold px-5 py-2.5 rounded-lg text-xs transition shadow-lg flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap">
-                <span>Deploy Computation Logic</span>
-                <span id="audit-spinner" class="htmx-indicator animate-spin">🌀</span>
-            </button>
-        </div>
-
-        <!-- Dynamic Output Container -->
-        <div id="audit-results" class="space-y-6"></div>
-
-=======
->>>>>>> Stashed changes
     </main>
 
     <!-- Bootstrap JS Bundle -->
