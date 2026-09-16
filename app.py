@@ -215,22 +215,22 @@ def bg_build_reconciliation_output(task_id: str):
         )
         db.execute("""
             INSERT INTO WFM (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE, Source)
-            SELECT NSC.permanent_consumer_no, NSC.new_meter_number, NSC.installation_date as INSTALLATION_DATE, 'NSC' as Source
+            SELECT NSC.PERMANENT_CONSUMER_NUMBER, NSC.NEW_METER_NUMBER, NSC.INSTALLATION_DATE as INSTALLATION_DATE, 'NSC' as Source
             FROM NSC
             WHERE NOT EXISTS (
                 SELECT 1 FROM WFM
-                WHERE WFM.CONSUMER_NUMBER = NSC.permanent_consumer_no
-                  AND WFM.METER_NUMBER = NSC.new_meter_number
+                WHERE WFM.CONSUMER_NUMBER = NSC.PERMANENT_CONSUMER_NUMBER
+                  AND WFM.METER_NUMBER = NSC.NEW_METER_NUMBER
                   AND api_MDM_status = 'Approve'
             );
 
             INSERT INTO WFM (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE, Source)
-            SELECT MI."Consumer Number", MI."Consumer Number", MI."Installation Date" AS INSTALLATION_DATE, 'MI' as Source
+            SELECT MI."Consumer Number", MI."New Meter Number", MI."Installation Date" AS INSTALLATION_DATE, 'MI' as Source
             FROM MI
             WHERE NOT EXISTS (
                 SELECT 1 FROM WFM
                 WHERE WFM.CONSUMER_NUMBER = MI."Consumer Number"
-                  AND WFM.METER_NUMBER = MI."Consumer Number"
+                  AND WFM.METER_NUMBER = MI."New Meter Number"
                   AND "API MDM Status" = 'Approve'
             );
         """)
