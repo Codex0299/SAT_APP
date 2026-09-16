@@ -7,6 +7,7 @@ import uuid
 import duckdb
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from routes_debug import get_debug_router
@@ -20,6 +21,10 @@ templates = Jinja2Templates(directory=str(TEMPLATES_PATH))
 
 # In-memory DuckDB connection
 conn = duckdb.connect(database=":memory:")
+
+app.mount(
+    "/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static"
+)
 
 app.include_router(get_debug_router(conn))
 
@@ -166,12 +171,12 @@ def bg_ingest_file_or_folder(
 
         # Success output + HTMX Out-of-Band Swap to set card indicator dot to blue
         success_html = f"""
-        <div class="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-900/80 px-2.5 py-1.5 rounded border border-zinc-800 font-mono">
-            <span class="text-zinc-500 font-semibold">state</span>
-            <span class="text-blue-400 font-medium">created {table_name} in memory ({count:,} records)</span>
+        <div class="d-flex align-items-center gap-2 fs-8 text-zinc-300 bg-zinc-900 px-2 py-1 rounded border border-zinc-800 vc-mono">
+            <span class="text-zinc-500 fw-semibold">state</span>
+            <span class="text-blue-400 fw-medium">created {table_name} in memory ({count:,} records)</span>
         </div>
         <!-- Out-Of-Band Swap: Updates card indicator dot to permanent blue -->
-        <span id="dot-{dataset_key}" hx-swap-oob="true" class="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></span>
+        <span id="dot-{dataset_key}" hx-swap-oob="true" class="vc-dot-ok"></span>
         """
         update_progress(task_id, 100, "Done!", result_html=success_html)
 
@@ -409,15 +414,13 @@ def bg_build_reconciliation_output(task_id: str):
         rows = db.execute("SELECT * FROM Final_DP LIMIT 100").fetchall()
 
         header = "".join([
-            f'<th class="p-2 border-b border-zinc-800 bg-zinc-900'
-            f' text-zinc-200 text-left font-semibold">{c}</th>'
+            f'<th class="vc-th">{c}</th>'
             for c in columns
         ])
         body = "".join([
-            '<tr class="hover:bg-zinc-800/50 transition  font-mono">'
+            '<tr class="vc-tr">'
             + "".join([
-                '<td class="p-2 border-b border-zinc-800/60'
-                f' text-zinc-300">{v}</td>'
+                f'<td class="vc-td">{v}</td>'
                 for v in r
             ])
             + "</tr>"
@@ -425,30 +428,30 @@ def bg_build_reconciliation_output(task_id: str):
         ])
 
         final_html = f"""
-        <div class="space-y-4">
-            <div class="flex flex-wrap items-center justify-between gap-3 bg-zinc-900 p-4 rounded-lg border border-zinc-800">
-                <span class="text-xs text-zinc-200 font-semibold tracking-wide">
+        <div class="d-flex flex-column gap-3">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 bg-zinc-900 p-3 rounded border border-zinc-800">
+                <span class="fs-8 text-zinc-200 fw-semibold vc-track">
                      Final Outputs Ready for Download:
                 </span>
-                <div class="flex items-center gap-2">
-                    <a href="/download-csv/lp" class="px-3.5 py-2 bg-white hover:bg-zinc-200 text-black text-xs font-bold rounded-md shadow-sm flex items-center gap-1.5 transition">
+                <div class="d-flex align-items-center gap-2">
+                    <a href="/download-csv/lp" class="btn btn-light btn-sm shadow-sm d-inline-flex align-items-center gap-1">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         Download LP
                     </a>
-                    <a href="/download-csv/bp" class="px-3.5 py-2 bg-white hover:bg-zinc-200 text-black text-xs font-bold rounded-md shadow-sm flex items-center gap-1.5 transition">
+                    <a href="/download-csv/bp" class="btn btn-light btn-sm shadow-sm d-inline-flex align-items-center gap-1">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         Download BP
                     </a>
-                    <a href="/download-csv/dp" class="px-3.5 py-2 bg-white hover:bg-zinc-200 text-black text-xs font-bold rounded-md shadow-sm flex items-center gap-1.5 transition">
+                    <a href="/download-csv/dp" class="btn btn-light btn-sm shadow-sm d-inline-flex align-items-center gap-1">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         Download DP
                     </a>
                 </div>
             </div>
 
-            <div class="overflow-x-auto max-h-96 border border-zinc-800 rounded-lg bg-zinc-950">
-                <table class="w-full text-xs border-collapse font-mono">
-                    <thead><tr class="sticky top-0 shadow-sm">{header}</tr></thead>
+            <div class="vc-table-wrap">
+                <table class="table table-light table-sm align-middle mb-0 vc-mono fs-8 border-0">
+                    <thead><tr>{header}</tr></thead>
                     <tbody>{body}</tbody>
                 </table>
             </div>
@@ -477,11 +480,11 @@ async def get_progress(task_id: str):
 
     if not task:
         return (
-            '<p class="text-red-400 text-xs">Task state missing or expired.</p>'
+            '<p class="text-red-400 fs-8">Task state missing or expired.</p>'
         )
 
     if task["error"]:
-        return f'<div class="text-red-300 text-xs p-3 bg-red-950/40 rounded border border-red-500/40 font-mono">Execution Error: {task["error"]}</div>'
+        return f'<div class="text-red-300 fs-8 p-3 bg-red-950-40 rounded border border-red-500-40 vc-mono">Execution Error: {task["error"]}</div>'
 
     if task["completed"]:
         return task["result_html"]
@@ -490,19 +493,19 @@ async def get_progress(task_id: str):
     status_msg = task["status"]
 
     return f"""
-    <div hx-get="/progress/{task_id}" hx-trigger="every 50ms" hx-swap="outerHTML" class="space-y-2 p-3 bg-zinc-900 border border-zinc-800 rounded-lg">
-        <div class="flex items-center justify-between text-xs text-zinc-300">
-            <span class="font-medium flex items-center gap-2">
-                <svg class="animate-spin h-3.5 w-3.5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+    <div hx-get="/progress/{task_id}" hx-trigger="every 50ms" hx-swap="outerHTML" class="d-flex flex-column gap-2 p-3 bg-zinc-900 border border-zinc-800 rounded">
+        <div class="d-flex align-items-center justify-content-between fs-8 text-zinc-300">
+            <span class="fw-medium d-flex align-items-center gap-2">
+                <svg class="animate-spin w-3-5 h-3-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
                 {status_msg}
             </span>
-            <span class="font-mono font-bold text-zinc-100">{pct}%</span>
+            <span class="vc-mono fw-bold text-zinc-100">{pct}%</span>
         </div>
-        <div class="w-full bg-zinc-950 rounded-full h-1.5 overflow-hidden border border-zinc-800">
-            <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-300 ease-out" style="width: {pct}%"></div>
+        <div class="vc-progress-track">
+            <div class="vc-progress-fill" style="width: {pct}%"></div>
         </div>
     </div>
     """
@@ -515,7 +518,7 @@ async def handle_ingestion(
     form = await request.form()
 
     if dataset_key not in DATASET_CONFIG:
-        return '<p class="text-red-400 text-xs">Invalid Dataset Key</p>'
+        return '<p class="text-red-400 fs-8">Invalid Dataset Key</p>'
 
     config = DATASET_CONFIG[dataset_key]
     file_path = form.get("file_path")
@@ -546,13 +549,13 @@ async def handle_ingestion(
             )
         else:
             return (
-                '<p class="text-amber-300 text-xs font-mono">No file or path'
+                '<p class="text-amber-300 fs-8 vc-mono">No file or path'
                 " provided.</p>"
             )
 
     else:
         if not folder_path or not str(folder_path).strip():
-            return '<p class="text-amber-300 text-xs font-mono">Folder path is missing.</p>'
+            return '<p class="text-amber-300 fs-8 vc-mono">Folder path is missing.</p>'
 
         clean_folder = normalize_path(folder_path)
         bg_tasks.add_task(
@@ -591,7 +594,7 @@ async def download_csv(table_key: str):
 
     if table_key not in valid_tables:
         return HTMLResponse(
-            '<p class="text-red-400 text-xs">Invalid export requested.</p>'
+            '<p class="text-red-400 fs-8">Invalid export requested.</p>'
         )
 
     file_name = valid_tables[table_key]
@@ -599,7 +602,7 @@ async def download_csv(table_key: str):
 
     if not file_path.exists():
         return HTMLResponse(
-            f'<p class="text-red-400 text-xs">File <code>{file_name}</code> not'
+            f'<p class="text-red-400 fs-8">File <code>{file_name}</code> not'
             " found. Run the audit step first.</p>"
         )
 
