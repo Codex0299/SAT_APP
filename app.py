@@ -199,14 +199,23 @@ def bg_build_reconciliation_output(task_id: str):
         drop_all_indexes(db)
 
         db.execute("""
-            CREATE OR REPLACE TABLE WFM AS
+            CREATE OR REPLACE TABLE WFM_raw AS
             SELECT 
                 "Consumer Number" AS CONSUMER_NUMBER,
                 "SSR_New Meter Number" AS METER_NUMBER,
                 "Installation Date" AS INSTALLATION_DATE,
-                'SSR' as Source
-            FROM SSR
-            WHERE "MDM Status" = 'Approve';
+                'SSR' as Source,
+                "Vendor Approve Status" AS VENDOR_APPROVE_STATUS,
+                "Iskraemeco QC Status" AS ISKRAEMECO_QC_STATUS,
+                "PESL QC Status" AS PESL_QC_STATUS,
+                "UGVCL QC Status" AS UGVCL_QC_STATUS,
+                "API 50 Status" AS API_50_STATUS,
+                "API 43 Status" AS API_43_49_STATUS,
+                
+                "MDM Status" AS MDM_STATUS
+
+            FROM SSR;
+            
         """)
 
         # Step 2: Merge NSC and MI records
@@ -214,24 +223,24 @@ def bg_build_reconciliation_output(task_id: str):
             task_id, 25, "Stage 2/8: Merging Approved NSC & MI records into WFM..."
         )
         db.execute("""
-            INSERT INTO WFM (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE, Source)
-            SELECT NSC.PERMANENT_CONSUMER_NUMBER, NSC.NEW_METER_NUMBER, NSC.INSTALLATION_DATE as INSTALLATION_DATE, 'NSC' as Source
+            INSERT INTO WFM_raw (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE, Source,VENDOR_APPROVE_STATUS, ISKRAEMECO_QC_STATUS, PESL_QC_STATUS, UGVCL_QC_STATUS, API_50_STATUS, API_43_49_STATUS, MDM_STATUS)
+            SELECT NSC.PERMANENT_CONSUMER_NUMBER, NSC.NEW_METER_NUMBER, NSC.INSTALLATION_DATE as INSTALLATION_DATE, 'NSC' as Source, NSC.VENDOR_APPROVE_STATUS as VENDOR_APPROVE_STATUS, NSC.ISK_STATUS as ISKRAEMECO_QC_STATUS, NSC.PESL_STATUS as PESL_QC_STATUS, NSC.UGVCL_STATUS as UGVCL_QC_STATUS, NSC.API_50_STATUS as API_50_STATUS, NSC.API_49_STATUS as API_43_49_STATUS, NSC.API_MDM_STATUS as MDM_STATUS
             FROM NSC
             WHERE NOT EXISTS (
-                SELECT 1 FROM WFM
-                WHERE WFM.CONSUMER_NUMBER = NSC.PERMANENT_CONSUMER_NUMBER
-                  AND WFM.METER_NUMBER = NSC.NEW_METER_NUMBER
-                  AND api_MDM_status = 'Approve'
+                SELECT 1 FROM WFM_raw
+                WHERE WFM_raw.CONSUMER_NUMBER = NSC.PERMANENT_CONSUMER_NUMBER
+                  AND WFM_raw.METER_NUMBER = NSC.NEW_METER_NUMBER
+                  -- AND api_MDM_status = 'Approve'
             );
 
-            INSERT INTO WFM (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE, Source)
-            SELECT MI."Consumer Number", MI."New Meter Number", MI."Installation Date" AS INSTALLATION_DATE, 'MI' as Source
+            INSERT INTO WFM_raw (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE, Source,VENDOR_APPROVE_STATUS, ISKRAEMECO_QC_STATUS, PESL_QC_STATUS, UGVCL_QC_STATUS, API_50_STATUS, API_43_49_STATUS, MDM_STATUS)
+            SELECT MI."Consumer Number", MI."New Meter Number", MI."Installation Date" AS INSTALLATION_DATE, 'MI' as Source, MI."Vendor Approve Status" AS VENDOR_APPROVE_STATUS, MI."L1 Status" AS ISKRAEMECO_QC_STATUS, MI."L2 Status" AS PESL_QC_STATUS, MI."L3 Status" AS UGVCL_QC_STATUS, MI."API 50 Status" AS API_50_STATUS, MI."API 43 Status" AS API_43_49_STATUS, MI."API MDM Status" AS MDM_STATUS
             FROM MI
             WHERE NOT EXISTS (
-                SELECT 1 FROM WFM
-                WHERE WFM.CONSUMER_NUMBER = MI."Consumer Number"
-                  AND WFM.METER_NUMBER = MI."New Meter Number"
-                  AND "API MDM Status" = 'Approve'
+                SELECT 1 FROM WFM_raw
+                WHERE WFM_raw.CONSUMER_NUMBER = MI."Consumer Number"
+                  AND WFM_raw.METER_NUMBER = MI."New Meter Number"
+                 
             );
         """)
 
@@ -243,7 +252,7 @@ def bg_build_reconciliation_output(task_id: str):
             CREATE INDEX IF NOT EXISTS idx_sat_consumer ON sat ("consumer number");
             CREATE INDEX IF NOT EXISTS idx_sat_meter ON sat ("meter no");
 
-            DELETE FROM WFM w
+            DELETE FROM WFM_raw w
             WHERE EXISTS (SELECT 1 FROM sat s WHERE s."consumer number" = w.CONSUMER_NUMBER)
                OR EXISTS (SELECT 1 FROM sat s WHERE s."meter no" = w.METER_NUMBER);
         """)
@@ -256,9 +265,46 @@ def bg_build_reconciliation_output(task_id: str):
             CREATE INDEX IF NOT EXISTS idx_fit_consumer ON fit ("consumer number");
             CREATE INDEX IF NOT EXISTS idx_fit_meter ON fit ("meter no");
 
-            DELETE FROM WFM w
+            DELETE FROM WFM_raw w
             WHERE EXISTS (SELECT 1 FROM fit s WHERE s."consumer number" = w.CONSUMER_NUMBER)
                OR EXISTS (SELECT 1 FROM fit s WHERE s."meter no" = w.METER_NUMBER);
+        """)
+
+        # step 4.2 creating table which contains sat eligible but stuck  in some other status
+        db.execute("""create or replace table sat_eligible_stuck as
+        select *,
+
+        case when api_50_status = 'Reject' then 'API 50 Reject' 
+        when api_50_status = 'Pending' then 'API 50 Pending'
+        when vendor_approve_status = 'Reject' then 'Vendor Reject'
+        when vendor_approve_status = 'Pending' then 'Vendor Pending'
+        when iskraemeco_qc_status = 'Reject' then 'Iskraemeco Reject'
+        when iskraemeco_qc_status = 'Pending' then 'Iskraemeco Pending'
+        when pesl_qc_status = 'Reject' then 'PESL Reject'
+        when pesl_qc_status = 'Pending' then 'PESL Pending'
+        when ugvcl_qc_status = 'Reject' then 'UGVCL Reject'
+        when ugvcl_qc_status = 'Pending' then 'UGVCL Pending'
+        when api_43_49_status = 'Reject' then 'API 43-49 Reject'
+        when api_43_49_status = 'Pending' then 'API 43-49 Pending'
+        when mdm_status = 'Reject' then 'MDM Reject'
+        when mdm_status = 'Pending' then 'MDM Pending'
+         when mdm_status = 'Request' then 'MDM Requested'
+        end as 'Remarks'
+
+        from WFM_raw
+
+        where (VENDOR_APPROVE_STATUS != 'Approve' ) or  (ISKRAEMECO_QC_STATUS != 'Approve') or  (PESL_QC_STATUS != 'Approve') or (UGVCL_QC_STATUS != 'Approve') or  (API_50_STATUS != 'Approve') or (API_43_49_STATUS != 'Approve') or (MDM_STATUS != 'Approve')
+    
+        
+        
+        """)
+
+
+        db.execute("""
+        
+        create or replace table WFM as select * from WFM_raw where MDM_STATUS = 'Approve'
+
+
         """)
 
         # Step 5: MDM, MDS, CP validation filtering
@@ -381,6 +427,7 @@ def bg_build_reconciliation_output(task_id: str):
             FROM LP_1
             LEFT JOIN rf ON LP_1.meter_no = rf."meter_serial_number"
             ORDER BY cluster, WFM_CONSUMER, meter_no;
+            
         """)
 
         # Step 8: Exporting CSV files & Final Cleanup
@@ -394,6 +441,7 @@ def bg_build_reconciliation_output(task_id: str):
             "Final_LP": "final_lp.csv",
             "Final_BP": "final_bp.csv",
             "Final_DP": "final_dp.csv",
+            "sat_eligible_stuck": "sat_eligible_stuck.csv",
         }
         for table, filename in exports.items():
             output_path = normalize_path(BASE_DIR / filename)
@@ -445,6 +493,10 @@ def bg_build_reconciliation_output(task_id: str):
                     <a href="/download-csv/dp" class="btn btn-light btn-sm shadow-sm d-inline-flex align-items-center gap-1">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         Download DP
+                    </a>
+                    <a href="/download-csv/sat_eligible_stuck" class="btn btn-light btn-sm shadow-sm d-inline-flex align-items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Download SAT Eligible Stuck
                     </a>
                 </div>
             </div>
@@ -590,6 +642,7 @@ async def download_csv(table_key: str):
         "lp": "final_lp.csv",
         "bp": "final_bp.csv",
         "dp": "final_dp.csv",
+        "sat_eligible_stuck": "sat_eligible_stuck.csv",
     }
 
     if table_key not in valid_tables:
