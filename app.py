@@ -271,34 +271,155 @@ def bg_build_reconciliation_output(task_id: str):
         """)
 
         # step 4.2 creating table which contains sat eligible but stuck  in some other status
-        db.execute("""create or replace table sat_eligible_stuck as
-        select *,
+        # db.execute("""create or replace table sat_eligible_stuck as
+        # select *,
 
-        case when api_50_status = 'Reject' then 'API 50 Reject' 
-        when api_50_status = 'Pending' then 'API 50 Pending'
-        when vendor_approve_status = 'Reject' then 'Vendor Reject'
-        when vendor_approve_status = 'Pending' then 'Vendor Pending'
-        when iskraemeco_qc_status = 'Reject' then 'Iskraemeco Reject'
-        when iskraemeco_qc_status = 'Pending' then 'Iskraemeco Pending'
-        when pesl_qc_status = 'Reject' then 'PESL Reject'
-        when pesl_qc_status = 'Pending' then 'PESL Pending'
-        when ugvcl_qc_status = 'Reject' then 'UGVCL Reject'
-        when ugvcl_qc_status = 'Pending' then 'UGVCL Pending'
-        when api_43_49_status = 'Reject' then 'API 43-49 Reject'
-        when api_43_49_status = 'Pending' then 'API 43-49 Pending'
-        when mdm_status = 'Reject' then 'MDM Reject'
-        when mdm_status = 'Pending' then 'MDM Pending'
-         when mdm_status = 'Request' then 'MDM Requested'
-        end as 'Remarks'
+        # case when api_50_status = 'Reject' then 'API 50 Reject' 
+        # when api_50_status = 'Pending' then 'API 50 Pending'
+        # when vendor_approve_status = 'Reject' then 'Vendor Reject'
+        # when vendor_approve_status = 'Pending' then 'Vendor Pending'
+        # when iskraemeco_qc_status = 'Reject' then 'Iskraemeco Reject'
+        # when iskraemeco_qc_status = 'Pending' then 'Iskraemeco Pending'
+        # when pesl_qc_status = 'Reject' then 'PESL Reject'
+        # when pesl_qc_status = 'Pending' then 'PESL Pending'
+        # when ugvcl_qc_status = 'Reject' then 'UGVCL Reject'
+        # when ugvcl_qc_status = 'Pending' then 'UGVCL Pending'
+        # when api_43_49_status = 'Reject' then 'API 43-49 Reject'
+        # when api_43_49_status = 'Pending' then 'API 43-49 Pending'
+        # when mdm_status = 'Reject' then 'MDM Reject'
+        # when mdm_status = 'Pending' then 'MDM Pending'
+        # when mdm_status = 'Request' then 'MDM Requested'
+        # end as 'Remarks'
 
-        from WFM_raw
+        # from WFM_raw
 
-        where (VENDOR_APPROVE_STATUS != 'Approve' ) or  (ISKRAEMECO_QC_STATUS != 'Approve') or  (PESL_QC_STATUS != 'Approve') or (UGVCL_QC_STATUS != 'Approve') or  (API_50_STATUS != 'Approve') or (API_43_49_STATUS != 'Approve') or (MDM_STATUS != 'Approve')
-    
+        # --where (VENDOR_APPROVE_STATUS != 'Approve' ) or  (ISKRAEMECO_QC_STATUS != 'Approve') or  (PESL_QC_STATUS != 'Approve') or (UGVCL_QC_STATUS != 'Approve') or  (API_50_STATUS != 'Approve') or (API_43_49_STATUS != 'Approve') or (MDM_STATUS != 'Approve')
+
         
         
-        """)
+        # """)
+        db.execute("""
+                    CREATE OR REPLACE TABLE sat_eligible_stuck AS
+                    SELECT
+                        w.*,
 
+                        mdm_cons.DeviceSerialNumber AS MDM_CONS_TO_METER,
+                        mdm_meter.ConsumerNumber AS MDM_METER_TO_CONS,
+
+                        mds_cons."Meter No" AS MDS_CONS_TO_METER,
+                        mds_meter."Consumer No" AS MDS_METER_TO_CONS,
+
+                        cp_cons.meter_no AS CP_CONS_TO_METER,
+                        cp_meter.consumer_no AS CP_METER_TO_CONS,
+                        
+                        case when api_50_status = 'Reject' then 'API 50 Reject' 
+                                when api_50_status = 'Pending' then 'API 50 Pending'
+                                when vendor_approve_status = 'Reject' then 'Vendor Reject'
+                                when vendor_approve_status = 'Pending' then 'Vendor Pending'
+                                when iskraemeco_qc_status = 'Reject' then 'Iskraemeco Reject'
+                                when iskraemeco_qc_status = 'Pending' then 'Iskraemeco Pending'
+                                when pesl_qc_status = 'Reject' then 'PESL Reject'
+                                when pesl_qc_status = 'Pending' then 'PESL Pending'
+                                when ugvcl_qc_status = 'Reject' then 'UGVCL Reject'
+                                when ugvcl_qc_status = 'Pending' then 'UGVCL Pending'
+                                when api_43_49_status = 'Reject' then 'API 43-49 Reject'
+                                when api_43_49_status = 'Pending' then 'API 43-49 Pending'
+                                when mdm_status = 'Reject' then 'MDM Reject'
+                                when mdm_status = 'Pending' then 'MDM Pending'
+                                when mdm_status = 'Request' then 'MDM Requested'
+                                when (VENDOR_APPROVE_STATUS = 'Approve' ) and (ISKRAEMECO_QC_STATUS = 'Approve') and (PESL_QC_STATUS = 'Approve') and (UGVCL_QC_STATUS = 'Approve') and (API_50_STATUS = 'Approve') and (API_43_49_STATUS = 'Approve') and (MDM_STATUS = 'Approve')
+                                then 'ALL APPROVED'
+                                end as 'Remarks',
+
+                        -- Consumer -> Meter validation 
+                        CASE
+                            WHEN w.METER_NUMBER = mdm_cons.DeviceSerialNumber
+                            AND w.METER_NUMBER = mds_cons."Meter No"
+                            AND w.METER_NUMBER = cp_cons.meter_no
+                            THEN 'ALL MATCH'
+
+                            ELSE CONCAT_WS(', ',
+                                CASE
+                                    WHEN mdm_cons.DeviceSerialNumber IS NULL
+                                        THEN 'MDM NOT FOUND'
+                                    WHEN w.METER_NUMBER <> mdm_cons.DeviceSerialNumber
+                                        THEN 'MDM NOT MATCH'
+                                END,
+
+                                CASE
+                                    WHEN mds_cons."Meter No" IS NULL
+                                        THEN 'MDS NOT FOUND'
+                                    WHEN w.METER_NUMBER <> mds_cons."Meter No"
+                                        THEN 'MDS NOT MATCH'
+                                END,
+
+                                CASE
+                                    WHEN cp_cons.meter_no IS NULL
+                                        THEN 'CP NOT FOUND'
+                                    WHEN w.METER_NUMBER <> cp_cons.meter_no
+                                        THEN 'CP NOT MATCH'
+                                END
+                            )
+                        END AS CONSUMER_REMARK,
+
+
+                        -- Meter -> Consumer validation
+                        CASE
+                            WHEN w.CONSUMER_NUMBER = mdm_meter.ConsumerNumber
+                            AND w.CONSUMER_NUMBER = mds_meter."Consumer No"
+                            AND w.CONSUMER_NUMBER = cp_meter.consumer_no
+                            THEN 'ALL MATCH'
+
+                            ELSE CONCAT_WS(', ',
+                                CASE
+                                    WHEN mdm_meter.ConsumerNumber IS NULL
+                                        THEN 'MDM NOT FOUND'
+                                    WHEN w. CONSUMER_NUMBER<> mdm_meter.ConsumerNumber
+                                        THEN 'MDM NOT MATCH'
+                                END,
+
+                                CASE
+                                    WHEN mds_meter."Consumer No" IS NULL
+                                        THEN 'MDS NOT FOUND'
+                                    WHEN w.CONSUMER_NUMBER <> mds_meter."Consumer No"
+                                        THEN 'MDS NOT MATCH'
+                                END,
+
+                                CASE
+                                    WHEN cp_meter.consumer_no IS NULL
+                                        THEN 'CP NOT FOUND'
+                                    WHEN w.CONSUMER_NUMBER <> cp_meter.consumer_no
+                                        THEN 'CP NOT MATCH'
+                                END
+                            )
+                        END AS METER_REMARK
+
+                    FROM WFM_raw w
+
+                    LEFT JOIN MDM mdm_cons
+                        ON w.CONSUMER_NUMBER = mdm_cons.ConsumerNumber
+
+                    LEFT JOIN MDM mdm_meter
+                        ON w.METER_NUMBER = mdm_meter.DeviceSerialNumber
+
+                    LEFT JOIN MDS mds_cons
+                        ON w.CONSUMER_NUMBER = mds_cons."Consumer No"
+
+                    LEFT JOIN MDS mds_meter
+                        ON w.METER_NUMBER = mds_meter."Meter No"
+
+                    LEFT JOIN CP cp_cons
+                        ON w.CONSUMER_NUMBER = cp_cons.consumer_no
+
+                    LEFT JOIN CP cp_meter
+                        ON w.METER_NUMBER = cp_meter.meter_no;
+                        
+                    DELETE FROM sat_eligible_stuck
+                    WHERE CONSUMER_REMARK = 'ALL MATCH'
+                    AND METER_REMARK = 'ALL MATCH';
+                   
+                   
+                   """)
 
         db.execute("""
         
