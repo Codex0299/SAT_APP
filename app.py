@@ -418,6 +418,7 @@ def bg_build_reconciliation_output(task_id: str):
                     WHERE CONSUMER_REMARK = 'ALL MATCH'
                     AND METER_REMARK = 'ALL MATCH';
                    
+                
                    
                    """)
 
@@ -549,6 +550,13 @@ def bg_build_reconciliation_output(task_id: str):
             LEFT JOIN rf ON LP_1.meter_no = rf."meter_serial_number"
             ORDER BY cluster, WFM_CONSUMER, meter_no;
             
+            DELETE FROM sat_eligible_stuck
+            WHERE EXISTS (
+                SELECT 1
+                FROM Final_LP
+                WHERE sat_eligible_stuck.CONSUMER_NUMBER = Final_LP.WFM_CONSUMER
+                OR sat_eligible_stuck.METER_NUMBER = Final_LP.meter_no
+            );
         """)
 
         # Step 8: Exporting CSV files & Final Cleanup
