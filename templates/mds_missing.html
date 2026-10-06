@@ -113,10 +113,10 @@
                         ('SSR', 'SSR Table', 'Parquet', './data/ssr.parquet'),
                         ('NSC', 'NSC Table', 'Parquet', './data/nsc.parquet'),
                         ('MI', 'MI Table', 'Parquet', './data/mi.parquet'),
-                        ('CRM', 'CRM Master', 'Dump', './data/crm.csv'),
-                        ('MDM', 'MDM Master', 'Dump', './data/mdm_folder'),
-                        ('PPM_MI', 'PPM_MI Master', 'Dump', './data/ppm_mi.csv'),
-                        ('WHM', 'WHM Store Master', 'Dump', './data/whm.csv')
+                        ('CRM', 'CRM Master', 'Parquet', './data/crm.parquet'),
+                        ('MDM', 'MDM Master', 'CSV Folder', './data/mdm_folder'),
+                        ('PPM_MI', 'PPM_MI Master', 'CSV Folder', './data/ppm_mi_folder'),
+                        ('WHM', 'WHM Store Master', 'Parquet', './data/whm.parquet')
                         ] %}
 
                         {% for key, label, fmt, placeholder in cards %}
@@ -198,7 +198,7 @@
                     <div id="mds-results" class="d-flex flex-column gap-3"></div>
 
                     <!-- Master Resolution Tracker Banner -->
-                    <div class="glow-card glow-banner d-flex flex-column flex-md-row align-items-center justify-content-between gap-4">
+                    <!-- <div class="glow-card glow-banner d-flex flex-column flex-md-row align-items-center justify-content-between gap-4">
 
                         <div class="spotlight spotlight-lg"></div>
 
@@ -225,7 +225,7 @@
                                 </button>
                             </form>
                         </div>
-                    </div>
+                    </div> -->
 
                     <!-- Tracker Output Container -->
                     <div id="mds-tracker-results" class="d-flex flex-column gap-3"></div>

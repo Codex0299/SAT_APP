@@ -26,13 +26,13 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 # Master dump tables consumed by the MDS Missing pipeline.
 MDS_DUMP_CONFIG = {
-    "SSR": {"table": "SSR", "label": "SSR Table"},
-    "NSC": {"table": "NSC", "label": "NSC Table"},
-    "MI": {"table": "MI", "label": "MI Table"},
-    "CRM": {"table": "CRM", "label": "CRM Master"},
-    "MDM": {"table": "MDM", "label": "MDM Master"},
-    "PPM_MI": {"table": "PPM_MI", "label": "PPM_MI Master"},
-    "WHM": {"table": "WHM", "label": "WHM Store Master"},
+    "SSR": {"table": "SSR", "label": "SSR Table", "type": "parquet"},
+    "NSC": {"table": "NSC", "label": "NSC Table", "type": "parquet"},
+    "MI": {"table": "MI", "label": "MI Table", "type": "parquet"},
+    "CRM": {"table": "CRM", "label": "CRM Master","type": "parquet"},
+    "MDM": {"table": "MDM", "label": "MDM Master","type":"csv_folder"},
+    "PPM_MI": {"table": "PPM_MI", "label": "PPM_MI Master","type":"csv_folder"},
+    "WHM": {"table": "WHM", "label": "WHM Store Master","type": "parquet"},
 }
 
 # Latest output paths (kind -> absolute file path) for /mds/download/{kind}
@@ -804,11 +804,11 @@ def bg_mds_pipeline(task_id: str, dr_csv_path: str):
                 </span>
                 <div class="d-flex align-items-center gap-2 flex-wrap">
                     {_download_buttons([
-                        ("mapped", "WFM Mapped"),
-                        ("crm", "Mapped + CRM"),
-                        ("final", "Mapped + Gap Analysis"),
-                        ("whm", "Mapped + Store Name"),
-                        ("date", "Mapped + Install Dates"),
+                        #("mapped", "WFM Mapped"),
+                        #("crm", "Mapped + CRM"),
+                        #("final", "Mapped + Gap Analysis"),
+                        #("whm", "Mapped + Store Name"),
+                        ("date", "MDS_GHOST_METERS_FINAL"),
                     ])}
                 </div>
             </div>
@@ -829,73 +829,73 @@ def bg_mds_pipeline(task_id: str, dr_csv_path: str):
         _update_progress(task_id, 100, "Error", error=str(e))
 
 
-def bg_mds_tracker(task_id: str, tracker_csv_path: str):
-    """Re-check resolved meters (cells 14->15)."""
-    try:
-        from app import conn
+# def bg_mds_tracker(task_id: str, tracker_csv_path: str):
+#     """Re-check resolved meters (cells 14->15)."""
+#     try:
+#         from app import conn
 
-        db = conn.cursor()
-        out_dir = _normalize_path(os.path.dirname(os.path.abspath(tracker_csv_path)))
+#         db = conn.cursor()
+#         out_dir = _normalize_path(os.path.dirname(os.path.abspath(tracker_csv_path)))
 
-        outputs = {
-            kind: os.path.join(out_dir, name)
-            for kind, name in TRACKER_FILE_NAMES.items()
-        }
-        MDS_LAST_OUTPUTS.update(outputs)
+#         outputs = {
+#             kind: os.path.join(out_dir, name)
+#             for kind, name in TRACKER_FILE_NAMES.items()
+#         }
+#         MDS_LAST_OUTPUTS.update(outputs)
 
-        _update_progress(
-            task_id,
-            10,
-            "Stage 1/2: Re-pulling latest WFM module statuses + CRM for resolved meters...",
-        )
-        db.execute(
-            S_TRACKER_QC.replace("@@IN@@", _normalize_path(tracker_csv_path)).replace(
-                "@@OUT@@", outputs["qc_checked"]
-            )
-        )
+#         _update_progress(
+#             task_id,
+#             10,
+#             "Stage 1/2: Re-pulling latest WFM module statuses + CRM for resolved meters...",
+#         )
+#         db.execute(
+#             S_TRACKER_QC.replace("@@IN@@", _normalize_path(tracker_csv_path)).replace(
+#                 "@@OUT@@", outputs["qc_checked"]
+#             )
+#         )
 
-        _update_progress(
-            task_id,
-            55,
-            "Stage 2/2: Applying false-positive safety net (Resolved -> Pending)...",
-        )
-        db.execute(
-            S_TRACKER_FINAL.replace("@@IN@@", outputs["qc_checked"]).replace(
-                "@@OUT@@", outputs["tracker_final"]
-            )
-        )
+#         _update_progress(
+#             task_id,
+#             55,
+#             "Stage 2/2: Applying false-positive safety net (Resolved -> Pending)...",
+#         )
+#         db.execute(
+#             S_TRACKER_FINAL.replace("@@IN@@", outputs["qc_checked"]).replace(
+#                 "@@OUT@@", outputs["tracker_final"]
+#             )
+#         )
 
-        cols, rows = _preview(db, outputs["tracker_final"])
+#         cols, rows = _preview(db, outputs["tracker_final"])
 
-        header, body = _html_table(cols, rows)
-        final_html = f"""
-        <div class="d-flex flex-column gap-3">
-            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 bg-zinc-900 p-3 rounded border border-zinc-800">
-                <span class="fs-8 text-zinc-200 fw-semibold vc-track">
-                     Master Resolution Tracker Outputs Ready for Download:
-                </span>
-                <div class="d-flex align-items-center gap-2">
-                    {_download_buttons([
-                        ("qc_checked", "QC Checked"),
-                        ("tracker_final", "Final Tracker"),
-                    ])}
-                </div>
-            </div>
-            <div class="vc-table-wrap">
-                <table class="table table-light table-sm align-middle mb-0 vc-mono fs-8 border-0">
-                    <thead><tr>{header}</tr></thead>
-                    <tbody>{body}</tbody>
-                </table>
-            </div>
-        </div>
-        """
-        _update_progress(task_id, 100, "Done!", result_html=final_html)
+#         header, body = _html_table(cols, rows)
+#         final_html = f"""
+#         <div class="d-flex flex-column gap-3">
+#             <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 bg-zinc-900 p-3 rounded border border-zinc-800">
+#                 <span class="fs-8 text-zinc-200 fw-semibold vc-track">
+#                      Master Resolution Tracker Outputs Ready for Download:
+#                 </span>
+#                 <div class="d-flex align-items-center gap-2">
+#                     {_download_buttons([
+#                         ("qc_checked", "QC Checked"),
+#                         ("tracker_final", "Final Tracker"),
+#                     ])}
+#                 </div>
+#             </div>
+#             <div class="vc-table-wrap">
+#                 <table class="table table-light table-sm align-middle mb-0 vc-mono fs-8 border-0">
+#                     <thead><tr>{header}</tr></thead>
+#                     <tbody>{body}</tbody>
+#                 </table>
+#             </div>
+#         </div>
+#         """
+#         _update_progress(task_id, 100, "Done!", result_html=final_html)
 
-    except Exception as e:
-        import traceback
+#     except Exception as e:
+#         import traceback
 
-        traceback.print_exc()
-        _update_progress(task_id, 100, "Error", error=str(e))
+#         traceback.print_exc()
+#         _update_progress(task_id, 100, "Error", error=str(e))
 
 
 # =========================================================================
