@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from routes_debug import get_debug_router
+from routes_mds_missing import get_mds_missing_router
 
 # Use Pathlib for reliable cross-platform base path resolution
 BASE_DIR = Path(__file__).resolve().parent
@@ -27,6 +28,7 @@ app.mount(
 )
 
 app.include_router(get_debug_router(conn))
+app.include_router(get_mds_missing_router(conn))
 
 # Task progress tracker store
 PROGRESS_STORE: Dict[str, Dict[str, Any]] = {}

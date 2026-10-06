@@ -27,6 +27,35 @@
         </svg>
     </div>
 
+    <!-- App Shell with Sidebar -->
+    <div class="vc-shell">
+
+        <!-- Sidebar -->
+        <aside class="vc-sidebar">
+            <div class="vc-sidebar-brand">
+                <img src="/static/img/logo.png" alt="SAT logo" height="28">
+                <span class="fs-7 fw-semibold vc-track text-navy">SAT Portal</span>
+            </div>
+
+            <nav class="vc-sidebar-nav">
+                <a href="/" class="vc-sidebar-link is-active">
+                    <svg class="vc-sidebar-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 13h16M4 6h16M4 20h16M8 9v4M16 17v4"></path></svg>
+                    <span>Ingestion &amp; Audit</span>
+                </a>
+                <a href="/mds-missing" class="vc-sidebar-link">
+                    <svg class="vc-sidebar-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17H7m10 0h-2m-6-4H7m10 0h-2m-6-4H7m10 0h-2M7 5h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2z"></path></svg>
+                    <span>MDS Missing Report</span>
+                </a>
+            </nav>
+
+            <div class="vc-sidebar-foot">
+                <span class="fs-8 text-zinc-400 vc-mono">v1.0.1</span>
+            </div>
+        </aside>
+
+        <!-- Main Column -->
+        <div class="vc-main">
+
     <!-- Sticky Navigation -->
     <nav class="vc-nav">
         <div class="vc-container d-flex align-items-center justify-content-between w-100">
@@ -164,6 +193,11 @@
 
         </div>
     </main>
+
+        </div>
+        <!-- /Main Column -->
+    </div>
+    <!-- /App Shell -->
 
     <!-- Bootstrap JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

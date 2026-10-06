@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MDS Missing Report - SAT Data Integration Portal</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+
+<body>
+
+    <!-- Ambient Subtle Wireframe Background Lines -->
+    <div class="position-fixed top-0 start-0 w-100 h-100 overflow-hidden d-flex align-items-center justify-content-end opacity-3 vc-z0 vc-pointer-none">
+        <svg class="wireframe text-zinc-100" viewBox="0 0 1000 1000" fill="none" stroke="currentColor" stroke-width="1.5">
+            <!-- E-style Horizontal Slat Blocks -->
+            <path d="M0 200 H450 V280 H0 Z" />
+            <path d="M0 460 H260 V540 H0 Z" />
+            <path d="M0 720 H340 V800 H0 Z" />
+
+            <!-- Right Diagonal Slash Sliders -->
+            <path d="M 550 850 L 900 150 H 1000 L 650 850 Z" />
+        </svg>
+    </div>
+
+    <!-- App Shell with Sidebar -->
+    <div class="vc-shell">
+
+        <!-- Sidebar -->
+        <aside class="vc-sidebar">
+            <div class="vc-sidebar-brand">
+                <img src="/static/img/logo.png" alt="SAT logo" height="28">
+                <span class="fs-7 fw-semibold vc-track text-navy">SAT Portal</span>
+            </div>
+
+            <nav class="vc-sidebar-nav">
+                <a href="/" class="vc-sidebar-link">
+                    <svg class="vc-sidebar-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 13h16M4 6h16M4 20h16M8 9v4M16 17v4"></path></svg>
+                    <span>Ingestion &amp; Audit</span>
+                </a>
+                <a href="/mds-missing" class="vc-sidebar-link is-active">
+                    <svg class="vc-sidebar-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17H7m10 0h-2m-6-4H7m10 0h-2m-6-4H7m10 0h-2M7 5h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2z"></path></svg>
+                    <span>MDS Missing Report</span>
+                </a>
+            </nav>
+
+            <div class="vc-sidebar-foot">
+                <span class="fs-8 text-zinc-400 vc-mono">v1.0.1</span>
+            </div>
+        </aside>
+
+        <!-- Main Column -->
+        <div class="vc-main">
+
+            <!-- Sticky Navigation -->
+            <nav class="vc-nav">
+                <div class="vc-container d-flex align-items-center justify-content-between w-100">
+                    <div class="d-flex align-items-center gap-3">
+                        <!-- Logo -->
+                        <img src="/static/img/logo.png" alt="SAT logo" height="32">
+                        <span class="text-zinc-400 fs-7 vc-mono">/</span>
+                        <span class="fs-7 fw-semibold vc-track text-navy">MDS Missing Report</span>
+                        <span
+                            class="ms-2 px-2 py-1 text-10 vc-mono rounded-pill border border-zinc-800 text-zinc-400 bg-zinc-900">
+                            daily report
+                        </span>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-3">
+                        <span
+                            class="d-inline-flex align-items-center gap-2 px-2 py-1 rounded-pill fs-8 vc-mono border border-emerald-950 bg-emerald-950-40 text-emerald-400">
+                            <span class="w-1-5 h-1-5 rounded-circle bg-emerald-400 animate-pulse"></span> DuckDB FastAPI &amp; HTMX
+                        </span>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- Main Content Wrapper -->
+            <main class="vc-container">
+                <div class="d-flex flex-column gap-4 py-4">
+
+                    <!-- Page Header -->
+                    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 vc-border-bottom pb-3">
+                        <div>
+                            <h1 class="fs-4 fw-bold vc-track text-navy mb-0">MDS Missing Report Pipeline</h1>
+                            <p class="fs-7 text-zinc-400 mt-1 mb-0">Upload module dumps, point to the daily DR report, and
+                                map consumer numbers / QC statuses / gaps across WFM, CRM, MDM &amp; PPM_MI.</p>
+                        </div>
+
+                        <!-- Quick Command Badge -->
+                        <div
+                            class="d-flex align-items-center gap-2 fs-7 vc-mono text-zinc-400 bg-zinc-900 px-3 py-1 rounded border border-zinc-800 shadow-sm vc-z1">
+                            <span>Engine:</span>
+                            <span class="text-zinc-200">FastAPI + Async BackgroundTasks</span>
+                        </div>
+                    </div>
+
+                    <!-- Master Dump Ingestion Grid -->
+                    <div class="d-flex flex-column gap-2">
+                        <h2 class="fs-6 fw-semibold vc-track text-navy mb-0">1. Upload Master Dumps</h2>
+                        <p class="fs-7 text-zinc-400 mb-0">Accepts a single <code class="text-zinc-300 vc-mono">.parquet</code> /
+                            <code class="text-zinc-300 vc-mono">.csv</code> file or a folder of CSV dumps for each module table.
+                        </p>
+                    </div>
+
+                    <div class="row g-3">
+
+                        {% set cards = [
+                        ('SSR', 'SSR Table', 'Parquet', './data/ssr.parquet'),
+                        ('NSC', 'NSC Table', 'Parquet', './data/nsc.parquet'),
+                        ('MI', 'MI Table', 'Parquet', './data/mi.parquet'),
+                        ('CRM', 'CRM Master', 'Dump', './data/crm.csv'),
+                        ('MDM', 'MDM Master', 'Dump', './data/mdm_folder'),
+                        ('PPM_MI', 'PPM_MI Master', 'Dump', './data/ppm_mi.csv'),
+                        ('WHM', 'WHM Store Master', 'Dump', './data/whm.csv')
+                        ] %}
+
+                        {% for key, label, fmt, placeholder in cards %}
+                        <div class="col-12 col-md-6 col-lg-4 col-xl-3">
+                            <div class="glow-card d-flex flex-column justify-content-between h-100">
+
+                                <!-- Interactive Mouse Spotlight Layer -->
+                                <div class="spotlight"></div>
+
+                                <div class="position-relative vc-z1">
+                                    <!-- Card Top Meta -->
+                                    <div class="d-flex align-items-center justify-content-between mb-3">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <!-- Distinct id target for HTMX OOB Swap -->
+                                            <span id="dot-{{ key }}" class="vc-dot"></span>
+                                            <h3 class="fs-7 fw-semibold vc-track text-navy mb-0">{{ label }}</h3>
+                                        </div>
+                                        <span
+                                            class="text-10 vc-mono text-zinc-400 text-uppercase px-1 py-0 rounded-1 border border-zinc-700 bg-zinc-800-80">
+                                            {{ fmt }}
+                                        </span>
+                                    </div>
+
+                                    <!-- Ingestion Form -->
+                                    <form hx-post="/mds/ingest/{{ key }}" hx-target="#status-{{ key }}" hx-indicator="#ind-{{ key }}"
+                                        class="d-flex flex-column gap-2">
+                                        <input type="text" name="path" placeholder="{{ placeholder }}" required
+                                            class="vc-input px-2 py-1">
+
+                                        <button type="submit" class="vc-btn w-100 d-flex align-items-center justify-content-center gap-1">
+                                            <span>Load {{ label }}</span>
+                                            <span id="ind-{{ key }}" class="htmx-indicator animate-spin">🌀</span>
+                                        </button>
+                                    </form>
+                                </div>
+
+                                <!-- Status Bar -->
+                                <div id="status-{{ key }}"
+                                    class="d-flex align-items-center justify-content-between vc-mono text-11 text-zinc-400 mt-3 pt-2 vc-border-top">
+                                    <span>State</span>
+                                    <span class="text-zinc-400 bg-zinc-800 px-1 py-0 rounded-1 border border-zinc-700 text-10">idle</span>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+
+                    </div>
+
+                    <!-- Daily DR Report Banner -->
+                    <div class="glow-card glow-banner d-flex flex-column flex-md-row align-items-center justify-content-between gap-4">
+
+                        <div class="spotlight spotlight-lg"></div>
+
+                        <div class="d-flex flex-column gap-1 position-relative vc-z1 flex-grow-1">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="w-2 h-2 rounded-circle bg-emerald-400 animate-pulse"></span>
+                                <h2 class="fs-6 fw-semibold vc-track text-navy mb-0">2. Run Daily MDS Missing Pipeline</h2>
+                            </div>
+                            <p class="fs-7 text-zinc-400 mb-0 vc-max-42 lh-sm">
+                                Maps every meter in the DR report against WFM modules (SSR / NSC / MI), then CRM, MDM and
+                                PPM_MI. Outputs <code class="text-zinc-300 vc-mono">DR-DataReport_Mapped*.csv</code>
+                                files (with gap remarks, store name &amp; install dates) written beside the report.
+                            </p>
+                            <form hx-post="/mds/run" hx-target="#mds-results" hx-indicator="#mds-spinner"
+                                class="d-flex flex-column flex-sm-row align-items-stretch gap-2 mt-2 position-relative vc-z1">
+                                <input type="text" name="dr_csv"
+                                    placeholder="C:/workarea/MDS Missing/20261005/DR-DataReport_20261005063828_OShdDo.csv"
+                                    required class="vc-input px-2 py-1 flex-grow-1">
+                                <button type="submit"
+                                    class="btn vc-btn-navy btn-sm shadow d-inline-flex align-items-center justify-content-center gap-2 fw-semibold px-4 py-2">
+                                    <span>Deploy MDS Mapping Logic</span>
+                                    <span id="mds-spinner" class="htmx-indicator animate-spin">🌀</span>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Output Container -->
+                    <div id="mds-results" class="d-flex flex-column gap-3"></div>
+
+                    <!-- Master Resolution Tracker Banner -->
+                    <div class="glow-card glow-banner d-flex flex-column flex-md-row align-items-center justify-content-between gap-4">
+
+                        <div class="spotlight spotlight-lg"></div>
+
+                        <div class="d-flex flex-column gap-1 position-relative vc-z1 flex-grow-1">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="w-2 h-2 rounded-circle bg-emerald-400 animate-pulse"></span>
+                                <h2 class="fs-6 fw-semibold vc-track text-navy mb-0">3. Re-Check Master Resolution Tracker</h2>
+                            </div>
+                            <p class="fs-7 text-zinc-400 mb-0 vc-max-42 lh-sm">
+                                For previously resolved meters, re-pulls latest WFM module statuses / CRM account numbers and
+                                flags false positives back to <code class="text-zinc-300 vc-mono">Pending</code>.
+                                Outputs <code class="text-zinc-300 vc-mono">Master_Resolution_Tracker_QC_Checked.csv</code> and
+                                <code class="text-zinc-300 vc-mono">Master_Resolution_Tracker_Final.csv</code> beside the tracker.
+                            </p>
+                            <form hx-post="/mds/tracker" hx-target="#mds-tracker-results" hx-indicator="#mds-tracker-spinner"
+                                class="d-flex flex-column flex-sm-row align-items-stretch gap-2 mt-2 position-relative vc-z1">
+                                <input type="text" name="tracker_csv"
+                                    placeholder="C:/workarea/MDS Missing/Tracker/Master_Resolution_Tracker.csv"
+                                    required class="vc-input px-2 py-1 flex-grow-1">
+                                <button type="submit"
+                                    class="btn vc-btn-navy btn-sm shadow d-inline-flex align-items-center justify-content-center gap-2 fw-semibold px-4 py-2">
+                                    <span>Re-Check Resolved Meters</span>
+                                    <span id="mds-tracker-spinner" class="htmx-indicator animate-spin">🌀</span>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Tracker Output Container -->
+                    <div id="mds-tracker-results" class="d-flex flex-column gap-3"></div>
+
+                </div>
+            </main>
+
+        </div>
+        <!-- /Main Column -->
+    </div>
+    <!-- /App Shell -->
+
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Mouse Tracking Script for Cards & Banner Spotlight -->
+    <script src="/static/js/spotlight.js"></script>
+</body>
+
+</html>
