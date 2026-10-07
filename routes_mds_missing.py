@@ -38,11 +38,9 @@ MDS_DUMP_CONFIG = {
 # Latest output paths (kind -> absolute file path) for /mds/download/{kind}
 MDS_LAST_OUTPUTS = {}
 
+# Only the final date-mapped file is written to disk (and downloadable).
+# Intermediate stages now stay in-memory as DuckDB tables.
 OUTPUT_FILE_NAMES = {
-    "mapped": "DR-DataReport_Mapped.csv",
-    "crm": "DR-DataReport_Mapped_CRM.csv",
-    "final": "DR-DataReport_Mapped_Final.csv",
-    "whm": "DR-DataReport_Mapped_Final_WHM.csv",
     "date": "DR-DataReport_Mapped_Final_WHM_Date.csv",
 }
 
@@ -59,10 +57,9 @@ TRACKER_FILE_NAMES = {
 # Cell 2 -> load the daily DR report
 S_LOAD_DR = "CREATE OR REPLACE TABLE MDS_MISSING_BASE AS \nSELECT * FROM read_csv('@@CSV@@', all_varchar = true)"
 
-# Cell 3 -> map WFM modules (SSR / NSC / MI) + QC statuses
-S_WFM_MAP = """
-COPY (
-    WITH
+# Cell 3 -> map WFM modules (SSR / NSC / MI) + QC statuses -> MDS_MAPPED_WFM
+S_WFM_QUERY = """
+WITH
     /* =========================================================
        1. MASTER TABLES (Grouped by METER NUMBER)
     ========================================================= */
@@ -180,17 +177,11 @@ COPY (
         END AS overall_remark
 
     FROM Merged_QC
-
-) TO '@@OUT@@' (HEADER, DELIMITER ',');
 """
 
-# Cell 5 -> map CRM account number & billing cycle
-S_CRM_MAP = """
-CREATE OR REPLACE TABLE MDS_MISSING_BASE2_WFM AS
-SELECT * FROM read_csv('@@IN@@', all_varchar = true);
-
-COPY (
-    WITH
+# Cell 5 -> map CRM account number & billing cycle -> MDS_MAPPED_CRM
+S_CRM_QUERY = """
+WITH
     Unique_CRM AS (
         SELECT
             TRIM("Serial Number"::VARCHAR) AS crm_meter_no,
@@ -204,7 +195,7 @@ COPY (
         SELECT
             *,
             TRIM("Meter No"::VARCHAR) AS join_meter
-        FROM MDS_MISSING_BASE2_WFM
+        FROM MDS_MAPPED_WFM
     ),
     Merged_CRM AS (
         SELECT
@@ -215,17 +206,11 @@ COPY (
         LEFT JOIN Unique_CRM crm ON b.join_meter = crm.crm_meter_no
     )
     SELECT * FROM Merged_CRM
-
-) TO '@@OUT@@' (HEADER, DELIMITER ',');
 """
 
-# Cell 7 -> cross-check MDM & PPM_MI + dynamic consumer gap analysis
-S_MDM_PPM_MAP = """
-CREATE OR REPLACE TABLE MDS_MISSING_BASE3_MDM_PPM AS
-SELECT * FROM read_csv('@@IN@@', all_varchar = true);
-
-COPY (
-    WITH
+# Cell 7 -> cross-check MDM & PPM_MI + dynamic consumer gap analysis -> MDS_MAPPED_FINAL
+S_MDM_PPM_QUERY = """
+WITH
     Unique_MDM AS (
         SELECT
             TRIM("DeviceSerialNumber"::VARCHAR) AS mdm_meter_no,
@@ -246,7 +231,7 @@ COPY (
         SELECT
             *,
             TRIM("Meter No"::VARCHAR) AS join_meter
-        FROM MDS_MISSING_BASE3_MDM_PPM
+        FROM MDS_MAPPED_CRM
     ),
     Merged_MDM_PPM AS (
         SELECT
@@ -288,17 +273,11 @@ COPY (
         LEFT JOIN Unique_PPM_MI ppm ON b.join_meter = ppm.ppm_meter_no
     )
     SELECT * FROM Merged_MDM_PPM
-
-) TO '@@OUT@@' (HEADER, DELIMITER ',');
 """
 
-# Cell 9 -> add Store Name from WHM
-S_WHM_MAP = """
-CREATE OR REPLACE TABLE MDS_MISSING_BASE4_FINAL AS
-SELECT * FROM read_csv('@@IN@@', all_varchar = true);
-
-COPY (
-    WITH
+# Cell 9 -> add Store Name from WHM -> MDS_MAPPED_WHM
+S_WHM_QUERY = """
+WITH
     Unique_WHM AS (
         SELECT
             TRIM(meter_serial_number::VARCHAR) AS whm_meter_no,
@@ -311,7 +290,7 @@ COPY (
         SELECT
             *,
             TRIM("Meter No"::VARCHAR) AS join_meter
-        FROM MDS_MISSING_BASE4_FINAL
+        FROM MDS_MAPPED_FINAL
     ),
     Merged_WHM AS (
         SELECT
@@ -327,11 +306,9 @@ COPY (
         LEFT JOIN Unique_WHM whm ON b.join_meter = whm.whm_meter_no
     )
     SELECT * FROM Merged_WHM
-
-) TO '@@OUT@@' (HEADER, DELIMITER ',');
 """
 
-# Cell 11 -> add WFM & CRM installation dates
+# Cell 11 -> add WFM & CRM installation dates -> write DR-DataReport_Mapped_Final_WHM_Date.csv
 S_DATE_MAP = """
 COPY (
     WITH
@@ -371,7 +348,7 @@ COPY (
         SELECT
             *,
             TRIM("Meter No"::VARCHAR) AS join_meter
-        FROM read_csv('@@IN@@', all_varchar = true)
+        FROM MDS_MAPPED_WHM
     ),
     Merged_Dates AS (
         SELECT
@@ -730,8 +707,7 @@ def bg_mds_pipeline(task_id: str, dr_csv_path: str):
         out_dir = _normalize_path(os.path.dirname(os.path.abspath(dr_csv_path)))
 
         outputs = {
-            kind: os.path.join(out_dir, name)
-            for kind, name in OUTPUT_FILE_NAMES.items()
+            "date": os.path.join(out_dir, OUTPUT_FILE_NAMES["date"]),
         }
         MDS_LAST_OUTPUTS.update(outputs)
 
@@ -747,18 +723,14 @@ def bg_mds_pipeline(task_id: str, dr_csv_path: str):
             18,
             "Stage 2/6: Mapping WFM modules (SSR / NSC / MI) + QC statuses...",
         )
-        db.execute(S_WFM_MAP.replace("@@OUT@@", outputs["mapped"]))
+        db.execute(f"CREATE OR REPLACE TABLE MDS_MAPPED_WFM AS {S_WFM_QUERY}")
 
         _update_progress(
             task_id,
             38,
             "Stage 3/6: Mapping CRM account number & billing cycle...",
         )
-        db.execute(
-            S_CRM_MAP.replace("@@IN@@", outputs["mapped"]).replace(
-                "@@OUT@@", outputs["crm"]
-            )
-        )
+        db.execute(f"CREATE OR REPLACE TABLE MDS_MAPPED_CRM AS {S_CRM_QUERY}")
 
         _update_progress(
             task_id,
@@ -766,9 +738,7 @@ def bg_mds_pipeline(task_id: str, dr_csv_path: str):
             "Stage 4/6: Cross-checking MDM & PPM_MI + consumer gap analysis...",
         )
         db.execute(
-            S_MDM_PPM_MAP.replace("@@IN@@", outputs["crm"]).replace(
-                "@@OUT@@", outputs["final"]
-            )
+            f"CREATE OR REPLACE TABLE MDS_MAPPED_FINAL AS {S_MDM_PPM_QUERY}"
         )
 
         _update_progress(
@@ -776,22 +746,14 @@ def bg_mds_pipeline(task_id: str, dr_csv_path: str):
             76,
             "Stage 5/6: Adding Store Name from WHM...",
         )
-        db.execute(
-            S_WHM_MAP.replace("@@IN@@", outputs["final"]).replace(
-                "@@OUT@@", outputs["whm"]
-            )
-        )
+        db.execute(f"CREATE OR REPLACE TABLE MDS_MAPPED_WHM AS {S_WHM_QUERY}")
 
         _update_progress(
             task_id,
             90,
             "Stage 6/6: Adding WFM & CRM installation dates...",
         )
-        db.execute(
-            S_DATE_MAP.replace("@@IN@@", outputs["whm"]).replace(
-                "@@OUT@@", outputs["date"]
-            )
-        )
+        db.execute(S_DATE_MAP.replace("@@OUT@@", outputs["date"]))
 
         cols, rows = _preview(db, outputs["date"])
 
@@ -800,16 +762,10 @@ def bg_mds_pipeline(task_id: str, dr_csv_path: str):
         <div class="d-flex flex-column gap-3">
             <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 bg-zinc-900 p-3 rounded border border-zinc-800">
                 <span class="fs-8 text-zinc-200 fw-semibold vc-track">
-                     MDS Missing Outputs Ready for Download:
+                     MDS Missing Final Output Ready for Download:
                 </span>
                 <div class="d-flex align-items-center gap-2 flex-wrap">
-                    {_download_buttons([
-                        #("mapped", "WFM Mapped"),
-                        #("crm", "Mapped + CRM"),
-                        #("final", "Mapped + Gap Analysis"),
-                        #("whm", "Mapped + Store Name"),
-                        ("date", "MDS_GHOST_METERS_FINAL"),
-                    ])}
+                    {_download_buttons([("date", "Download Mapped + Install Dates")])}
                 </div>
             </div>
             <div class="vc-table-wrap">
@@ -919,7 +875,7 @@ def get_mds_missing_router(conn):
             return '<p class="text-red-400 fs-8">Invalid MDS dataset key</p>'
 
         form = await request.form()
-        raw_path = (form.get("path") or "").strip()
+        raw_path = (form.get("path") or "").strip('\'" ')
 
         if not raw_path:
             return '<p class="text-amber-300 fs-8 vc-mono">No file or folder path provided.</p>'
@@ -941,7 +897,7 @@ def get_mds_missing_router(conn):
     @router.post("/mds/run", response_class=HTMLResponse)
     async def mds_run(request: Request, bg_tasks: BackgroundTasks):
         form = await request.form()
-        dr_csv = (form.get("dr_csv") or "").strip()
+        dr_csv = (form.get("dr_csv") or "").strip('\'" ')
 
         if not dr_csv:
             return (
@@ -966,7 +922,7 @@ def get_mds_missing_router(conn):
     @router.post("/mds/tracker", response_class=HTMLResponse)
     async def mds_tracker(request: Request, bg_tasks: BackgroundTasks):
         form = await request.form()
-        tracker_csv = (form.get("tracker_csv") or "").strip()
+        tracker_csv = (form.get("tracker_csv") or "").strip('\'" ')
 
         if not tracker_csv:
             return (
