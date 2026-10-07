@@ -380,9 +380,10 @@ COPY (
         LEFT JOIN Unique_NSC_Date nsc ON b.join_meter = nsc.meter_no
         LEFT JOIN Unique_MI_Date mi ON b.join_meter = mi.meter_no
         LEFT JOIN Unique_CRM_Date crm ON b.join_meter = crm.crm_meter_no
+        
     )
     SELECT * FROM Merged_Dates
-
+        where "Meter No" not like 'UH%' --Remove UH meters from the final output
 ) TO '@@OUT@@' (HEADER, DELIMITER ',');
 """
 
@@ -765,7 +766,7 @@ def bg_mds_pipeline(task_id: str, dr_csv_path: str):
                      MDS Missing Final Output Ready for Download:
                 </span>
                 <div class="d-flex align-items-center gap-2 flex-wrap">
-                    {_download_buttons([("date", "Download Mapped + Install Dates")])}
+                    {_download_buttons([("date", "Download Consolidated CSV")])}
                 </div>
             </div>
             <div class="vc-table-wrap">
