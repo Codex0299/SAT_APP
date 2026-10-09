@@ -203,8 +203,8 @@ def bg_build_reconciliation_output(task_id: str):
         db.execute("""
             CREATE OR REPLACE TABLE WFM_raw AS
             SELECT 
-                "Consumer Number" AS CONSUMER_NUMBER,
-                "SSR_New Meter Number" AS METER_NUMBER,
+                "Consumer No" AS CONSUMER_NUMBER,
+                "Meter No" AS METER_NUMBER,
                 "Installation Date" AS INSTALLATION_DATE,
                 'SSR' as Source,
                 "Vendor Approve Status" AS VENDOR_APPROVE_STATUS,
@@ -226,22 +226,22 @@ def bg_build_reconciliation_output(task_id: str):
         )
         db.execute("""
             INSERT INTO WFM_raw (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE, Source,VENDOR_APPROVE_STATUS, ISKRAEMECO_QC_STATUS, PESL_QC_STATUS, UGVCL_QC_STATUS, API_50_STATUS, API_43_49_STATUS, MDM_STATUS)
-            SELECT NSC.PERMANENT_CONSUMER_NUMBER, NSC.NEW_METER_NUMBER, NSC.INSTALLATION_DATE as INSTALLATION_DATE, 'NSC' as Source, NSC.VENDOR_APPROVE_STATUS as VENDOR_APPROVE_STATUS, NSC.ISK_STATUS as ISKRAEMECO_QC_STATUS, NSC.PESL_STATUS as PESL_QC_STATUS, NSC.UGVCL_STATUS as UGVCL_QC_STATUS, NSC.API_50_STATUS as API_50_STATUS, NSC.API_49_STATUS as API_43_49_STATUS, NSC.API_MDM_STATUS as MDM_STATUS
+            SELECT NSC."Consumer No", NSC."Meter No", NSC."Installation Date" as INSTALLATION_DATE, 'NSC' as Source, NSC.VENDOR_APPROVE_STATUS as VENDOR_APPROVE_STATUS, NSC.ISK_STATUS as ISKRAEMECO_QC_STATUS, NSC.PESL_STATUS as PESL_QC_STATUS, NSC.UGVCL_STATUS as UGVCL_QC_STATUS, NSC.API_50_STATUS as API_50_STATUS, NSC.API_49_STATUS as API_43_49_STATUS, NSC.API_MDM_STATUS as MDM_STATUS
             FROM NSC
             WHERE NOT EXISTS (
                 SELECT 1 FROM WFM_raw
-                WHERE WFM_raw.CONSUMER_NUMBER = NSC.PERMANENT_CONSUMER_NUMBER
-                  AND WFM_raw.METER_NUMBER = NSC.NEW_METER_NUMBER
+                WHERE WFM_raw.CONSUMER_NUMBER = NSC."Consumer No"
+                  AND WFM_raw.METER_NUMBER = NSC."Meter No"
                   -- AND api_MDM_status = 'Approve'
             );
 
             INSERT INTO WFM_raw (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE, Source,VENDOR_APPROVE_STATUS, ISKRAEMECO_QC_STATUS, PESL_QC_STATUS, UGVCL_QC_STATUS, API_50_STATUS, API_43_49_STATUS, MDM_STATUS)
-            SELECT MI."Consumer Number", MI."New Meter Number", MI."Installation Date" AS INSTALLATION_DATE, 'MI' as Source, MI."Vendor Approve Status" AS VENDOR_APPROVE_STATUS, MI."L1 Status" AS ISKRAEMECO_QC_STATUS, MI."L2 Status" AS PESL_QC_STATUS, MI."L3 Status" AS UGVCL_QC_STATUS, MI."API 50 Status" AS API_50_STATUS, MI."API 43 Status" AS API_43_49_STATUS, MI."API MDM Status" AS MDM_STATUS
+            SELECT MI."Consumer No", MI."Meter No", MI."Installation Date" AS INSTALLATION_DATE, 'MI' as Source, MI."Vendor Approve Status" AS VENDOR_APPROVE_STATUS, MI."L1 Status" AS ISKRAEMECO_QC_STATUS, MI."L2 Status" AS PESL_QC_STATUS, MI."L3 Status" AS UGVCL_QC_STATUS, MI."API 50 Status" AS API_50_STATUS, MI."API 43 Status" AS API_43_49_STATUS, MI."API MDM Status" AS MDM_STATUS
             FROM MI
             WHERE NOT EXISTS (
                 SELECT 1 FROM WFM_raw
-                WHERE WFM_raw.CONSUMER_NUMBER = MI."Consumer Number"
-                  AND WFM_raw.METER_NUMBER = MI."New Meter Number"
+                WHERE WFM_raw.CONSUMER_NUMBER = MI."Consumer No"
+                  AND WFM_raw.METER_NUMBER = MI."Meter No"
                  
             );
         """)
