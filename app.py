@@ -1,14 +1,16 @@
 import glob
+import hashlib
 import os
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 import uuid
 
 import duckdb
-from fastapi import BackgroundTasks, FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import BackgroundTasks, FastAPI, Form, Request
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
 from routes_debug import get_debug_router
 from routes_mds_missing import get_mds_missing_router
@@ -16,19 +18,19 @@ from routes_mds_missing import get_mds_missing_router
 # Use Pathlib for reliable cross-platform base path resolution
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_PATH = BASE_DIR / "templates"
+USER_DBS_DIR = BASE_DIR / "user_databases"
+USER_DBS_DIR.mkdir(exist_ok=True)
 
 app = FastAPI()
-templates = Jinja2Templates(directory=str(TEMPLATES_PATH))
+# Secret key for signed session cookies
+app.add_middleware(SessionMiddleware,
+                   secret_key="change-this-secret-key-in-prod")
 
-# In-memory DuckDB connection
-conn = duckdb.connect(database=":memory:")
+templates = Jinja2Templates(directory=str(TEMPLATES_PATH))
 
 app.mount(
     "/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static"
 )
-
-app.include_router(get_debug_router(conn))
-app.include_router(get_mds_missing_router(conn))
 
 # Task progress tracker store
 PROGRESS_STORE: Dict[str, Dict[str, Any]] = {}
@@ -50,12 +52,96 @@ DATASET_CONFIG = {
 }
 
 
+# ==========================================
+# 🔐 AUTH & PER-USER DISK DB HELPERS
+# ==========================================
+
+AUTH_DB_PATH = (BASE_DIR / "auth_users.duckdb").as_posix()
+
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+def init_auth_db():
+    """Creates the users registry DB and seeds default admin if empty."""
+    conn = duckdb.connect(database=AUTH_DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            username VARCHAR PRIMARY KEY,
+            password_hash VARCHAR NOT NULL,
+            role VARCHAR NOT NULL DEFAULT 'user',
+            db_filename VARCHAR NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    existing = conn.execute(
+        "SELECT COUNT(*) FROM users WHERE username = 'admin'"
+    ).fetchone()[0]
+    if existing == 0:
+        conn.execute(
+            "INSERT INTO users (username, password_hash, role, db_filename) VALUES (?, ?, ?, ?)",
+            ["admin", hash_password("admin123"), "admin", "user_admin.duckdb"],
+        )
+    conn.close()
+
+
+init_auth_db()
+
+
 def normalize_path(raw_path: Union[str, Path]) -> str:
     """Utility to convert any raw path string or Path object into standard POSIX format for DuckDB."""
     if not raw_path:
         return ""
     clean_path = str(raw_path).strip('\'" ').strip()
     return Path(clean_path).as_posix()
+
+
+def get_user_db_path(username: str) -> str:
+    """Returns the unique physical DuckDB file path on disk for a specific logged-in user."""
+    safe_user = "".join(c for c in username if c.isalnum() or c in ("_", "-"))
+    return normalize_path(USER_DBS_DIR / f"user_{safe_user}.duckdb")
+
+
+def get_user_db_connection(username: str):
+    """Opens a disk-backed DuckDB connection isolated to the user."""
+    db_path = get_user_db_path(username)
+    conn = duckdb.connect(database=db_path)
+    conn.execute("PRAGMA memory_limit='2GB';")
+    return conn
+
+
+class UserDatabaseProxy:
+    """A proxy connection that dynamically opens the active user's disk-backed DuckDB."""
+
+    def __init__(self, app_instance):
+        self.app_instance = app_instance
+
+    def _get_active_conn(self):
+        # Fallback to admin if no user is currently bound in the context
+        return get_user_db_connection("admin")
+
+    def execute(self, query, parameters=None):
+        conn = self._get_active_conn()
+        try:
+            return conn.execute(query, parameters)
+        finally:
+            conn.close()
+
+    def cursor(self):
+        return self.execute
+
+
+def get_current_user(request: Request) -> Optional[Dict[str, str]]:
+    username = request.session.get("username")
+    role = request.session.get("role")
+    if not username:
+        return None
+    return {"username": username, "role": role}
+
+
+app.include_router(get_debug_router())
+app.include_router(get_mds_missing_router())
 
 
 def update_progress(
@@ -96,15 +182,22 @@ def drop_all_indexes(db):
             print(f"Warning: Could not clear indexes: {e}")
 
 
+# ==========================================
+# ⚙️ BACKGROUND WORKERS (PER-USER DISK DB)
+# ==========================================
+
+
 def bg_ingest_file_or_folder(
     task_id: str,
+    username: str,
     dataset_key: str,
     file_path: str = None,
     folder_path: str = None,
 ):
-    """Background worker function for file/folder ingestion with stage progress updates."""
+    """Background worker function for file/folder ingestion into the user's disk DuckDB."""
+    db = None
     try:
-        db = conn.cursor()
+        db = get_user_db_connection(username)
         config = DATASET_CONFIG[dataset_key]
         table_name = config["table"]
 
@@ -112,7 +205,7 @@ def bg_ingest_file_or_folder(
         norm_file = normalize_path(file_path) if file_path else None
 
         update_progress(
-            task_id, 10, f"Preparing target table <code>{table_name}</code>..."
+            task_id, 10, f"Preparing target table <code>{table_name}</code> on disk..."
         )
         db.execute(f"DROP TABLE IF EXISTS {table_name}")
 
@@ -171,32 +264,37 @@ def bg_ingest_file_or_folder(
 
         count = db.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
 
-        # Success output + HTMX Out-of-Band Swap to set card indicator dot to blue
         success_html = f"""
         <div class="d-flex align-items-center gap-2 fs-8 text-zinc-300 bg-zinc-900 px-2 py-1 rounded border border-zinc-800 vc-mono">
             <span class="text-zinc-500 fw-semibold">state</span>
-            <span class="text-blue-400 fw-medium">created {table_name} in memory ({count:,} records)</span>
+            <span class="text-blue-400 fw-medium">created {table_name} on disk [{username}] ({count:,} records)</span>
         </div>
-        <!-- Out-Of-Band Swap: Updates card indicator dot to permanent blue -->
         <span id="dot-{dataset_key}" hx-swap-oob="true" class="vc-dot-ok"></span>
         """
         update_progress(task_id, 100, "Done!", result_html=success_html)
 
     except Exception as e:
         update_progress(task_id, 100, "Error", error=str(e))
+    finally:
+        if db:
+            db.close()
 
 
-def bg_build_reconciliation_output(task_id: str):
-    """Executes the reconciliation pipeline with stage progress updates."""
+def bg_build_reconciliation_output(task_id: str, username: str):
+    """Executes the reconciliation pipeline inside the logged-in user's physical DB."""
+    db = None
     try:
-        db = conn.cursor()
+        db = get_user_db_connection(username)
+
+        # User-specific export folder so downloads don't overwrite other users
+        user_export_dir = BASE_DIR / "exports" / username
+        user_export_dir.mkdir(parents=True, exist_ok=True)
 
         # Step 1: Drop indexes & Base WFM creation from SSR
         update_progress(
             task_id,
             10,
-            "Stage 1/8: Dropping existing indexes & Creating base WFM table"
-            " from Approved SSR records...",
+            "Stage 1/8: Dropping existing indexes & Creating base WFM table from Approved SSR records...",
         )
         drop_all_indexes(db)
 
@@ -213,11 +311,8 @@ def bg_build_reconciliation_output(task_id: str):
                 "UGVCL QC Status" AS UGVCL_QC_STATUS,
                 "API 50 Status" AS API_50_STATUS,
                 "API 43 Status" AS API_43_49_STATUS,
-                
                 "MDM Status" AS MDM_STATUS
-
             FROM SSR;
-            
         """)
 
         # Step 2: Merge NSC and MI records
@@ -232,7 +327,6 @@ def bg_build_reconciliation_output(task_id: str):
                 SELECT 1 FROM WFM_raw
                 WHERE WFM_raw.CONSUMER_NUMBER = NSC.PERMANENT_CONSUMER_NUMBER
                   AND WFM_raw.METER_NUMBER = NSC.NEW_METER_NUMBER
-                  -- AND api_MDM_status = 'Approve'
             );
 
             INSERT INTO WFM_raw (CONSUMER_NUMBER, METER_NUMBER, INSTALLATION_DATE, Source,VENDOR_APPROVE_STATUS, ISKRAEMECO_QC_STATUS, PESL_QC_STATUS, UGVCL_QC_STATUS, API_50_STATUS, API_43_49_STATUS, MDM_STATUS)
@@ -242,7 +336,6 @@ def bg_build_reconciliation_output(task_id: str):
                 SELECT 1 FROM WFM_raw
                 WHERE WFM_raw.CONSUMER_NUMBER = MI."Consumer Number"
                   AND WFM_raw.METER_NUMBER = MI."New Meter Number"
-                 
             );
         """)
 
@@ -272,164 +365,71 @@ def bg_build_reconciliation_output(task_id: str):
                OR EXISTS (SELECT 1 FROM fit s WHERE s."meter no" = w.METER_NUMBER);
         """)
 
-        # step 4.2 creating table which contains sat eligible but stuck  in some other status
-        # db.execute("""create or replace table sat_eligible_stuck as
-        # select *,
-
-        # case when api_50_status = 'Reject' then 'API 50 Reject' 
-        # when api_50_status = 'Pending' then 'API 50 Pending'
-        # when vendor_approve_status = 'Reject' then 'Vendor Reject'
-        # when vendor_approve_status = 'Pending' then 'Vendor Pending'
-        # when iskraemeco_qc_status = 'Reject' then 'Iskraemeco Reject'
-        # when iskraemeco_qc_status = 'Pending' then 'Iskraemeco Pending'
-        # when pesl_qc_status = 'Reject' then 'PESL Reject'
-        # when pesl_qc_status = 'Pending' then 'PESL Pending'
-        # when ugvcl_qc_status = 'Reject' then 'UGVCL Reject'
-        # when ugvcl_qc_status = 'Pending' then 'UGVCL Pending'
-        # when api_43_49_status = 'Reject' then 'API 43-49 Reject'
-        # when api_43_49_status = 'Pending' then 'API 43-49 Pending'
-        # when mdm_status = 'Reject' then 'MDM Reject'
-        # when mdm_status = 'Pending' then 'MDM Pending'
-        # when mdm_status = 'Request' then 'MDM Requested'
-        # end as 'Remarks'
-
-        # from WFM_raw
-
-        # --where (VENDOR_APPROVE_STATUS != 'Approve' ) or  (ISKRAEMECO_QC_STATUS != 'Approve') or  (PESL_QC_STATUS != 'Approve') or (UGVCL_QC_STATUS != 'Approve') or  (API_50_STATUS != 'Approve') or (API_43_49_STATUS != 'Approve') or (MDM_STATUS != 'Approve')
-
-        
-        
-        # """)
         db.execute("""
-                    CREATE OR REPLACE TABLE sat_eligible_stuck AS
-                    SELECT
-                        w.*,
-
-                        mdm_cons.DeviceSerialNumber AS MDM_CONS_TO_METER,
-                        mdm_meter.ConsumerNumber AS MDM_METER_TO_CONS,
-
-                        mds_cons."Meter No" AS MDS_CONS_TO_METER,
-                        mds_meter."Consumer No" AS MDS_METER_TO_CONS,
-
-                        cp_cons.meter_no AS CP_CONS_TO_METER,
-                        cp_meter.consumer_no AS CP_METER_TO_CONS,
-                        
-                        case when api_50_status = 'Reject' then 'API 50 Reject' 
-                                when api_50_status = 'Pending' then 'API 50 Pending'
-                                when vendor_approve_status = 'Reject' then 'Vendor Reject'
-                                when vendor_approve_status = 'Pending' then 'Vendor Pending'
-                                when iskraemeco_qc_status = 'Reject' then 'Iskraemeco Reject'
-                                when iskraemeco_qc_status = 'Pending' then 'Iskraemeco Pending'
-                                when pesl_qc_status = 'Reject' then 'PESL Reject'
-                                when pesl_qc_status = 'Pending' then 'PESL Pending'
-                                when ugvcl_qc_status = 'Reject' then 'UGVCL Reject'
-                                when ugvcl_qc_status = 'Pending' then 'UGVCL Pending'
-                                when api_43_49_status = 'Reject' then 'API 43-49 Reject'
-                                when api_43_49_status = 'Pending' then 'API 43-49 Pending'
-                                when mdm_status = 'Reject' then 'MDM Reject'
-                                when mdm_status = 'Pending' then 'MDM Pending'
-                                when mdm_status = 'Request' then 'MDM Requested'
-                                when (VENDOR_APPROVE_STATUS = 'Approve' ) and (ISKRAEMECO_QC_STATUS = 'Approve') and (PESL_QC_STATUS = 'Approve') and (UGVCL_QC_STATUS = 'Approve') and (API_50_STATUS = 'Approve') and (API_43_49_STATUS = 'Approve') and (MDM_STATUS = 'Approve')
-                                then 'ALL APPROVED'
-                                end as 'Remarks',
-
-                        -- Consumer -> Meter validation 
-                        CASE
-                            WHEN w.METER_NUMBER = mdm_cons.DeviceSerialNumber
-                            AND w.METER_NUMBER = mds_cons."Meter No"
-                            AND w.METER_NUMBER = cp_cons.meter_no
-                            THEN 'ALL MATCH'
-
-                            ELSE CONCAT_WS(', ',
-                                CASE
-                                    WHEN mdm_cons.DeviceSerialNumber IS NULL
-                                        THEN 'MDM NOT FOUND'
-                                    WHEN w.METER_NUMBER <> mdm_cons.DeviceSerialNumber
-                                        THEN 'MDM NOT MATCH'
-                                END,
-
-                                CASE
-                                    WHEN mds_cons."Meter No" IS NULL
-                                        THEN 'MDS NOT FOUND'
-                                    WHEN w.METER_NUMBER <> mds_cons."Meter No"
-                                        THEN 'MDS NOT MATCH'
-                                END,
-
-                                CASE
-                                    WHEN cp_cons.meter_no IS NULL
-                                        THEN 'CP NOT FOUND'
-                                    WHEN w.METER_NUMBER <> cp_cons.meter_no
-                                        THEN 'CP NOT MATCH'
-                                END
-                            )
-                        END AS CONSUMER_REMARK,
-
-
-                        -- Meter -> Consumer validation
-                        CASE
-                            WHEN w.CONSUMER_NUMBER = mdm_meter.ConsumerNumber
-                            AND w.CONSUMER_NUMBER = mds_meter."Consumer No"
-                            AND w.CONSUMER_NUMBER = cp_meter.consumer_no
-                            THEN 'ALL MATCH'
-
-                            ELSE CONCAT_WS(', ',
-                                CASE
-                                    WHEN mdm_meter.ConsumerNumber IS NULL
-                                        THEN 'MDM NOT FOUND'
-                                    WHEN w. CONSUMER_NUMBER<> mdm_meter.ConsumerNumber
-                                        THEN 'MDM NOT MATCH'
-                                END,
-
-                                CASE
-                                    WHEN mds_meter."Consumer No" IS NULL
-                                        THEN 'MDS NOT FOUND'
-                                    WHEN w.CONSUMER_NUMBER <> mds_meter."Consumer No"
-                                        THEN 'MDS NOT MATCH'
-                                END,
-
-                                CASE
-                                    WHEN cp_meter.consumer_no IS NULL
-                                        THEN 'CP NOT FOUND'
-                                    WHEN w.CONSUMER_NUMBER <> cp_meter.consumer_no
-                                        THEN 'CP NOT MATCH'
-                                END
-                            )
-                        END AS METER_REMARK
-
-                    FROM WFM_raw w
-
-                    LEFT JOIN MDM mdm_cons
-                        ON w.CONSUMER_NUMBER = mdm_cons.ConsumerNumber
-
-                    LEFT JOIN MDM mdm_meter
-                        ON w.METER_NUMBER = mdm_meter.DeviceSerialNumber
-
-                    LEFT JOIN MDS mds_cons
-                        ON w.CONSUMER_NUMBER = mds_cons."Consumer No"
-
-                    LEFT JOIN MDS mds_meter
-                        ON w.METER_NUMBER = mds_meter."Meter No"
-
-                    LEFT JOIN CP cp_cons
-                        ON w.CONSUMER_NUMBER = cp_cons.consumer_no
-
-                    LEFT JOIN CP cp_meter
-                        ON w.METER_NUMBER = cp_meter.meter_no;
-                        
-                    DELETE FROM sat_eligible_stuck
-                    WHERE CONSUMER_REMARK = 'ALL MATCH'
-                    AND METER_REMARK = 'ALL MATCH';
-                   
+            CREATE OR REPLACE TABLE sat_eligible_stuck AS
+            SELECT
+                w.*,
+                mdm_cons.DeviceSerialNumber AS MDM_CONS_TO_METER,
+                mdm_meter.ConsumerNumber AS MDM_METER_TO_CONS,
+                mds_cons."Meter No" AS MDS_CONS_TO_METER,
+                mds_meter."Consumer No" AS MDS_METER_TO_CONS,
+                cp_cons.meter_no AS CP_CONS_TO_METER,
+                cp_meter.consumer_no AS CP_METER_TO_CONS,
+                case when api_50_status = 'Reject' then 'API 50 Reject' 
+                        when api_50_status = 'Pending' then 'API 50 Pending'
+                        when vendor_approve_status = 'Reject' then 'Vendor Reject'
+                        when vendor_approve_status = 'Pending' then 'Vendor Pending'
+                        when iskraemeco_qc_status = 'Reject' then 'Iskraemeco Reject'
+                        when iskraemeco_qc_status = 'Pending' then 'Iskraemeco Pending'
+                        when pesl_qc_status = 'Reject' then 'PESL Reject'
+                        when pesl_qc_status = 'Pending' then 'PESL Pending'
+                        when ugvcl_qc_status = 'Reject' then 'UGVCL Reject'
+                        when ugvcl_qc_status = 'Pending' then 'UGVCL Pending'
+                        when api_43_49_status = 'Reject' then 'API 43-49 Reject'
+                        when api_43_49_status = 'Pending' then 'API 43-49 Pending'
+                        when mdm_status = 'Reject' then 'MDM Reject'
+                        when mdm_status = 'Pending' then 'MDM Pending'
+                        when mdm_status = 'Request' then 'MDM Requested'
+                        when (VENDOR_APPROVE_STATUS = 'Approve' ) and (ISKRAEMECO_QC_STATUS = 'Approve') and (PESL_QC_STATUS = 'Approve') and (UGVCL_QC_STATUS = 'Approve') and (API_50_STATUS = 'Approve') and (API_43_49_STATUS = 'Approve') and (MDM_STATUS = 'Approve')
+                        then 'ALL APPROVED'
+                        end as 'Remarks',
+                CASE
+                    WHEN w.METER_NUMBER = mdm_cons.DeviceSerialNumber
+                    AND w.METER_NUMBER = mds_cons."Meter No"
+                    AND w.METER_NUMBER = cp_cons.meter_no
+                    THEN 'ALL MATCH'
+                    ELSE CONCAT_WS(', ',
+                        CASE WHEN mdm_cons.DeviceSerialNumber IS NULL THEN 'MDM NOT FOUND' WHEN w.METER_NUMBER <> mdm_cons.DeviceSerialNumber THEN 'MDM NOT MATCH' END,
+                        CASE WHEN mds_cons."Meter No" IS NULL THEN 'MDS NOT FOUND' WHEN w.METER_NUMBER <> mds_cons."Meter No" THEN 'MDS NOT MATCH' END,
+                        CASE WHEN cp_cons.meter_no IS NULL THEN 'CP NOT FOUND' WHEN w.METER_NUMBER <> cp_cons.meter_no THEN 'CP NOT MATCH' END
+                    )
+                END AS CONSUMER_REMARK,
+                CASE
+                    WHEN w.CONSUMER_NUMBER = mdm_meter.ConsumerNumber
+                    AND w.CONSUMER_NUMBER = mds_meter."Consumer No"
+                    AND w.CONSUMER_NUMBER = cp_meter.consumer_no
+                    THEN 'ALL MATCH'
+                    ELSE CONCAT_WS(', ',
+                        CASE WHEN mdm_meter.ConsumerNumber IS NULL THEN 'MDM NOT FOUND' WHEN w.CONSUMER_NUMBER <> mdm_meter.ConsumerNumber THEN 'MDM NOT MATCH' END,
+                        CASE WHEN mds_meter."Consumer No" IS NULL THEN 'MDS NOT FOUND' WHEN w.CONSUMER_NUMBER <> mds_meter."Consumer No" THEN 'MDS NOT MATCH' END,
+                        CASE WHEN cp_meter.consumer_no IS NULL THEN 'CP NOT FOUND' WHEN w.CONSUMER_NUMBER <> cp_meter.consumer_no THEN 'CP NOT MATCH' END
+                    )
+                END AS METER_REMARK
+            FROM WFM_raw w
+            LEFT JOIN MDM mdm_cons ON w.CONSUMER_NUMBER = mdm_cons.ConsumerNumber
+            LEFT JOIN MDM mdm_meter ON w.METER_NUMBER = mdm_meter.DeviceSerialNumber
+            LEFT JOIN MDS mds_cons ON w.CONSUMER_NUMBER = mds_cons."Consumer No"
+            LEFT JOIN MDS mds_meter ON w.METER_NUMBER = mds_meter."Meter No"
+            LEFT JOIN CP cp_cons ON w.CONSUMER_NUMBER = cp_cons.consumer_no
+            LEFT JOIN CP cp_meter ON w.METER_NUMBER = cp_meter.meter_no;
                 
-                   
-                   """)
-
-        db.execute("""
-        
-        create or replace table WFM as select * from WFM_raw where MDM_STATUS = 'Approve'
-
-
+            DELETE FROM sat_eligible_stuck
+            WHERE CONSUMER_REMARK = 'ALL MATCH'
+            AND METER_REMARK = 'ALL MATCH';
         """)
+
+        db.execute(
+            "CREATE OR REPLACE TABLE WFM AS SELECT * FROM WFM_raw WHERE MDM_STATUS = 'Approve'")
 
         # Step 5: MDM, MDS, CP validation filtering
         update_progress(
@@ -565,8 +565,7 @@ def bg_build_reconciliation_output(task_id: str):
         update_progress(
             task_id,
             95,
-            "Stage 8/8: Exporting audit results to CSV files and cleaning"
-            " indexes...",
+            "Stage 8/8: Exporting audit results to CSV files and cleaning indexes...",
         )
         exports = {
             "Final_LP": "final_lp.csv",
@@ -575,9 +574,10 @@ def bg_build_reconciliation_output(task_id: str):
             "sat_eligible_stuck": "sat_eligible_stuck.csv",
         }
         for table, filename in exports.items():
-            output_path = normalize_path(BASE_DIR / filename)
+            output_path = normalize_path(user_export_dir / filename)
             db.execute(
-                f"COPY {table} TO '{output_path}' (HEADER, DELIMITER ',')")
+                f"COPY {table} TO '{output_path}' (HEADER, DELIMITER ',')"
+            )
 
         drop_all_indexes(db)
 
@@ -592,16 +592,10 @@ def bg_build_reconciliation_output(task_id: str):
         ]
         rows = db.execute("SELECT * FROM Final_DP LIMIT 100").fetchall()
 
-        header = "".join([
-            f'<th class="vc-th">{c}</th>'
-            for c in columns
-        ])
+        header = "".join([f'<th class="vc-th">{c}</th>' for c in columns])
         body = "".join([
             '<tr class="vc-tr">'
-            + "".join([
-                f'<td class="vc-td">{v}</td>'
-                for v in r
-            ])
+            + "".join([f'<td class="vc-td">{v}</td>' for v in r])
             + "</tr>"
             for r in rows
         ])
@@ -610,25 +604,13 @@ def bg_build_reconciliation_output(task_id: str):
         <div class="d-flex flex-column gap-3">
             <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 bg-zinc-900 p-3 rounded border border-zinc-800">
                 <span class="fs-8 text-zinc-200 fw-semibold vc-track">
-                     Final Outputs Ready for Download:
+                     Final Outputs Ready for Download ({username}):
                 </span>
                 <div class="d-flex align-items-center gap-2">
-                    <a href="/download-csv/lp" class="btn btn-light btn-sm shadow-sm d-inline-flex align-items-center gap-1">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                        Download LP
-                    </a>
-                    <a href="/download-csv/bp" class="btn btn-light btn-sm shadow-sm d-inline-flex align-items-center gap-1">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                        Download BP
-                    </a>
-                    <a href="/download-csv/dp" class="btn btn-light btn-sm shadow-sm d-inline-flex align-items-center gap-1">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                        Download DP
-                    </a>
-                    <a href="/download-csv/sat_eligible_stuck" class="btn btn-light btn-sm shadow-sm d-inline-flex align-items-center gap-1">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                        Download SAT Eligible Stuck
-                    </a>
+                    <a href="/download-csv/lp" class="btn btn-light btn-sm shadow-sm d-inline-flex align-items-center gap-1">Download LP</a>
+                    <a href="/download-csv/bp" class="btn btn-light btn-sm shadow-sm d-inline-flex align-items-center gap-1">Download BP</a>
+                    <a href="/download-csv/dp" class="btn btn-light btn-sm shadow-sm d-inline-flex align-items-center gap-1">Download DP</a>
+                    <a href="/download-csv/sat_eligible_stuck" class="btn btn-light btn-sm shadow-sm d-inline-flex align-items-center gap-1">Download SAT Eligible Stuck</a>
                 </div>
             </div>
 
@@ -644,16 +626,186 @@ def bg_build_reconciliation_output(task_id: str):
 
     except Exception as e:
         update_progress(task_id, 100, "Error", error=str(e))
+    finally:
+        if db:
+            db.close()
 
 
 # ==========================================
-# 🌐 ROUTES & HTMX PROGRESS POLLING
+# 🔐 LOGIN & ADMIN USER MANAGEMENT ROUTES
+# ==========================================
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return templates.TemplateResponse(
+        request=request, name="login.html", context={"error": None}
+    )
+
+
+@app.post("/login", response_class=HTMLResponse)
+async def login_submit(
+    request: Request, username: str = Form(...), password: str = Form(...)
+):
+    conn = duckdb.connect(database=AUTH_DB_PATH)
+    user = conn.execute(
+        "SELECT username, password_hash, role FROM users WHERE username = ?",
+        [username.strip()],
+    ).fetchone()
+    conn.close()
+
+    if not user or user[1] != hash_password(password):
+        return templates.TemplateResponse(
+            request=request,
+            name="login.html",
+            context={"error": "Invalid username or password."},
+        )
+
+    # Save user session
+    request.session["username"] = user[0]
+    request.session["role"] = user[2]
+
+    # Touch/Create the user's isolated disk-backed DuckDB immediately on login
+    user_db = get_user_db_connection(user[0])
+    user_db.close()
+
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.get("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=303)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_dashboard(request: Request):
+    current_user = get_current_user(request)
+    if not current_user or current_user["role"] != "admin":
+        return RedirectResponse(url="/login", status_code=303)
+
+    conn = duckdb.connect(database=AUTH_DB_PATH)
+    users_rows = conn.execute(
+        "SELECT username, role, db_filename, created_at FROM users ORDER BY created_at DESC"
+    ).fetchall()
+    conn.close()
+
+    users = []
+    for row in users_rows:
+        db_file = USER_DBS_DIR / row[2]
+        size_mb = (
+            round(db_file.stat().st_size / (1024 * 1024), 2)
+            if db_file.exists()
+            else 0.0
+        )
+        users.append({
+            "username": row[0],
+            "role": row[1],
+            "db_filename": row[2],
+            "created_at": str(row[3])[:19],
+            "db_size_mb": size_mb,
+        })
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin.html",
+        context={
+            "current_user": current_user,
+            "users": users,
+            "msg": request.query_params.get("msg"),
+            "err": request.query_params.get("err"),
+        },
+    )
+
+
+@app.post("/admin/add-user")
+async def admin_add_user(
+    request: Request,
+    new_username: str = Form(...),
+    new_password: str = Form(...),
+    role: str = Form("user"),
+):
+    current_user = get_current_user(request)
+    if not current_user or current_user["role"] != "admin":
+        return RedirectResponse(url="/login", status_code=303)
+
+    clean_user = "".join(
+        c for c in new_username.strip() if c.isalnum() or c in ("_", "-")
+    )
+    if not clean_user or not new_password.strip():
+        return RedirectResponse(
+            url="/admin?err=Username+and+password+are+required", status_code=303
+        )
+
+    db_filename = f"user_{clean_user}.duckdb"
+    conn = duckdb.connect(database=AUTH_DB_PATH)
+    exists = conn.execute(
+        "SELECT COUNT(*) FROM users WHERE username = ?", [clean_user]
+    ).fetchone()[0]
+
+    if exists > 0:
+        conn.close()
+        return RedirectResponse(
+            url="/admin?err=User+already+exists", status_code=303
+        )
+
+    conn.execute(
+        "INSERT INTO users (username, password_hash, role, db_filename) VALUES (?, ?, ?, ?)",
+        [clean_user, hash_password(new_password.strip()), role, db_filename],
+    )
+    conn.close()
+
+    # Pre-create the physical DuckDB file on disk for this new user
+    u_conn = get_user_db_connection(clean_user)
+    u_conn.close()
+
+    return RedirectResponse(
+        url=f"/admin?msg=User+{clean_user}+created+successfully", status_code=303
+    )
+
+
+@app.post("/admin/delete-user/{target_username}")
+async def admin_delete_user(request: Request, target_username: str):
+    current_user = get_current_user(request)
+    if not current_user or current_user["role"] != "admin":
+        return RedirectResponse(url="/login", status_code=303)
+
+    if target_username == "admin":
+        return RedirectResponse(
+            url="/admin?err=Cannot+delete+primary+admin+account", status_code=303
+        )
+
+    conn = duckdb.connect(database=AUTH_DB_PATH)
+    conn.execute("DELETE FROM users WHERE username = ?", [target_username])
+    conn.close()
+
+    # Remove their physical DuckDB file from disk to free space
+    db_file = Path(get_user_db_path(target_username))
+    if db_file.exists():
+        try:
+            db_file.unlink()
+        except Exception as e:
+            print(f"Warning deleting DB file: {e}")
+
+    return RedirectResponse(
+        url=f"/admin?msg=User+{target_username}+and+their+database+removed",
+        status_code=303,
+    )
+
+
+# ==========================================
+# 🌐 MAIN APP ROUTES (PROTECTED BY LOGIN)
 # ==========================================
 
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    return templates.TemplateResponse(request=request, name="index.html")
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    return templates.TemplateResponse(
+        request=request, name="index.html", context={"user": user}
+    )
 
 
 @app.get("/progress/{task_id}", response_class=HTMLResponse)
@@ -662,9 +814,7 @@ async def get_progress(task_id: str):
     task = PROGRESS_STORE.get(task_id)
 
     if not task:
-        return (
-            '<p class="text-red-400 fs-8">Task state missing or expired.</p>'
-        )
+        return '<p class="text-red-400 fs-8">Task state missing or expired.</p>'
 
     if task["error"]:
         return f'<div class="text-red-300 fs-8 p-3 bg-red-950-40 rounded border border-red-500-40 vc-mono">Execution Error: {task["error"]}</div>'
@@ -698,6 +848,10 @@ async def get_progress(task_id: str):
 async def handle_ingestion(
     dataset_key: str, request: Request, bg_tasks: BackgroundTasks
 ):
+    user = get_current_user(request)
+    if not user:
+        return '<p class="text-red-400 fs-8">Session expired. Please refresh and log in.</p>'
+
     form = await request.form()
 
     if dataset_key not in DATASET_CONFIG:
@@ -709,6 +863,7 @@ async def handle_ingestion(
     file = form.get("file")
 
     task_id = str(uuid.uuid4())
+    username = user["username"]
 
     if config["type"] == "parquet":
         if file_path and str(file_path).strip():
@@ -716,25 +871,24 @@ async def handle_ingestion(
             bg_tasks.add_task(
                 bg_ingest_file_or_folder,
                 task_id,
+                username,
                 dataset_key,
                 file_path=clean_path,
             )
 
         elif file and getattr(file, "filename", None):
-            temp_path = BASE_DIR / f"temp_{file.filename}"
+            temp_path = BASE_DIR / f"temp_{username}_{file.filename}"
             with open(temp_path, "wb") as f:
                 f.write(await file.read())
             bg_tasks.add_task(
                 bg_ingest_file_or_folder,
                 task_id,
+                username,
                 dataset_key,
                 file_path=str(temp_path),
             )
         else:
-            return (
-                '<p class="text-amber-300 fs-8 vc-mono">No file or path'
-                " provided.</p>"
-            )
+            return '<p class="text-amber-300 fs-8 vc-mono">No file or path provided.</p>'
 
     else:
         if not folder_path or not str(folder_path).strip():
@@ -744,31 +898,37 @@ async def handle_ingestion(
         bg_tasks.add_task(
             bg_ingest_file_or_folder,
             task_id,
+            username,
             dataset_key,
             folder_path=clean_folder,
         )
 
-    update_progress(task_id, 0, "Starting ingestion...")
-    return f"""
-    <div hx-get="/progress/{task_id}" hx-trigger="load" hx-swap="outerHTML"></div>
-    """
+    update_progress(task_id, 0, f"Starting ingestion into {username}'s DB...")
+    return f'<div hx-get="/progress/{task_id}" hx-trigger="load" hx-swap="outerHTML"></div>'
 
 
 @app.post("/run-audit", response_class=HTMLResponse)
-async def run_audit(bg_tasks: BackgroundTasks):
-    task_id = str(uuid.uuid4())
-    update_progress(
-        task_id, 0, "Initializing Reconciliation Audit Engine..."
-    )
-    bg_tasks.add_task(bg_build_reconciliation_output, task_id)
+async def run_audit(request: Request, bg_tasks: BackgroundTasks):
+    user = get_current_user(request)
+    if not user:
+        return '<p class="text-red-400 fs-8">Session expired. Please log in.</p>'
 
-    return f"""
-    <div hx-get="/progress/{task_id}" hx-trigger="load" hx-swap="outerHTML"></div>
-    """
+    task_id = str(uuid.uuid4())
+    username = user["username"]
+    update_progress(
+        task_id, 0, f"Initializing Audit Engine for {username}..."
+    )
+    bg_tasks.add_task(bg_build_reconciliation_output, task_id, username)
+
+    return f'<div hx-get="/progress/{task_id}" hx-trigger="load" hx-swap="outerHTML"></div>'
 
 
 @app.get("/download-csv/{table_key}")
-async def download_csv(table_key: str):
+async def download_csv(request: Request, table_key: str):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+
     valid_tables = {
         "lp": "final_lp.csv",
         "bp": "final_bp.csv",
@@ -782,12 +942,11 @@ async def download_csv(table_key: str):
         )
 
     file_name = valid_tables[table_key]
-    file_path = BASE_DIR / file_name
+    file_path = BASE_DIR / "exports" / user["username"] / file_name
 
     if not file_path.exists():
         return HTMLResponse(
-            f'<p class="text-red-400 fs-8">File <code>{file_name}</code> not'
-            " found. Run the audit step first.</p>"
+            f'<p class="text-red-400 fs-8">File <code>{file_name}</code> not found. Run the audit step first.</p>'
         )
 
     return FileResponse(
@@ -799,5 +958,4 @@ async def download_csv(table_key: str):
 
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=8000)

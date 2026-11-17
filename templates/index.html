@@ -15,8 +15,10 @@
 <body>
 
     <!-- Ambient Subtle Wireframe Background Lines -->
-    <div class="position-fixed top-0 start-0 w-100 h-100 overflow-hidden d-flex align-items-center justify-content-end opacity-3 vc-z0 vc-pointer-none">
-        <svg class="wireframe text-zinc-100" viewBox="0 0 1000 1000" fill="none" stroke="currentColor" stroke-width="1.5">
+    <div
+        class="position-fixed top-0 start-0 w-100 h-100 overflow-hidden d-flex align-items-center justify-content-end opacity-3 vc-z0 vc-pointer-none">
+        <svg class="wireframe text-zinc-100" viewBox="0 0 1000 1000" fill="none" stroke="currentColor"
+            stroke-width="1.5">
             <!-- E-style Horizontal Slat Blocks -->
             <path d="M0 200 H450 V280 H0 Z" />
             <path d="M0 460 H260 V540 H0 Z" />
@@ -39,160 +41,185 @@
 
             <nav class="vc-sidebar-nav">
                 <a href="/" class="vc-sidebar-link is-active">
-                    <svg class="vc-sidebar-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 13h16M4 6h16M4 20h16M8 9v4M16 17v4"></path></svg>
+                    <svg class="vc-sidebar-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 13h16M4 6h16M4 20h16M8 9v4M16 17v4"></path>
+                    </svg>
                     <span>Ingestion &amp; Audit</span>
                 </a>
                 <a href="/mds-missing" class="vc-sidebar-link">
-                    <svg class="vc-sidebar-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17H7m10 0h-2m-6-4H7m10 0h-2m-6-4H7m10 0h-2M7 5h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2z"></path></svg>
+                    <svg class="vc-sidebar-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 17H7m10 0h-2m-6-4H7m10 0h-2m-6-4H7m10 0h-2M7 5h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2z">
+                        </path>
+                    </svg>
                     <span>MDS Missing Report</span>
                 </a>
             </nav>
 
             <div class="vc-sidebar-foot">
                 <span class="fs-8 text-zinc-400 vc-mono">v1.0.1</span>
+
+                <div class="vc-sidebar-foot d-flex flex-column gap-2">
+                    <div class="fs-8 vc-mono text-zinc-400">
+                        DB: <span class="text-navy fw-bold">user_{{ user.username }}.duckdb</span>
+                    </div>
+                    {% if user.role == 'admin' %}
+                    <a href="/admin" class="vc-btn text-center text-decoration-none py-1">Admin Panel</a>
+                    {% endif %}
+                    <a href="/logout" class="btn btn-outline-secondary btn-sm fs-8">Logout ({{ user.username }})</a>
+                </div>
             </div>
         </aside>
 
         <!-- Main Column -->
         <div class="vc-main">
 
-    <!-- Sticky Navigation -->
-    <nav class="vc-nav">
-        <div class="vc-container d-flex align-items-center justify-content-between w-100">
-            <div class="d-flex align-items-center gap-3">
-                <!-- Logo -->
-                <img src="/static/img/logo.png" alt="SAT logo" height="32">
-                <span class="text-zinc-400 fs-7 vc-mono">/</span>
-                <span class="fs-7 fw-semibold vc-track text-navy">SAT Integration Portal</span>
-                <span
-                    class="ms-2 px-2 py-1 text-10 vc-mono rounded-pill border border-zinc-800 text-zinc-400 bg-zinc-900">
-                    v1.0.1
-                </span>
-            </div>
+            <!-- Sticky Navigation -->
+            <nav class="vc-nav">
+                <div class="vc-container d-flex align-items-center justify-content-between w-100">
+                    <div class="d-flex align-items-center gap-3">
+                        <!-- Logo -->
+                        <img src="/static/img/logo.png" alt="SAT logo" height="32">
+                        <span class="text-zinc-400 fs-7 vc-mono">/</span>
+                        <span class="fs-7 fw-semibold vc-track text-navy">SAT Integration Portal</span>
+                        <span
+                            class="ms-2 px-2 py-1 text-10 vc-mono rounded-pill border border-zinc-800 text-zinc-400 bg-zinc-900">
+                            v1.0.1
+                        </span>
+                    </div>
 
-            <div class="d-flex align-items-center gap-3">
-                <span
-                    class="d-inline-flex align-items-center gap-2 px-2 py-1 rounded-pill fs-8 vc-mono border border-emerald-950 bg-emerald-950-40 text-emerald-400">
-                    <span class="w-1-5 h-1-5 rounded-circle bg-emerald-400 animate-pulse"></span> DuckDB FastAPI &amp; HTMX
-                </span>
-            </div>
-        </div>
-    </nav>
-
-    <!-- Main Content Wrapper -->
-    <main class="vc-container">
-        <div class="d-flex flex-column gap-4 py-4">
-
-            <!-- Page Header -->
-            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 vc-border-bottom pb-3">
-                <div>
-                    <h1 class="fs-4 fw-bold vc-track text-navy mb-0">Data Ingestion Pipelines</h1>
-                    <p class="fs-7 text-zinc-400 mt-1 mb-0">Configure environment datasets and trigger DuckDB columnar
-                        processing.</p>
+                    <div class="d-flex align-items-center gap-3">
+                        <span
+                            class="d-inline-flex align-items-center gap-2 px-2 py-1 rounded-pill fs-8 vc-mono border border-emerald-950 bg-emerald-950-40 text-emerald-400">
+                            <span class="w-1-5 h-1-5 rounded-circle bg-emerald-400 animate-pulse"></span> DuckDB FastAPI
+                            &amp; HTMX
+                        </span>
+                    </div>
                 </div>
+            </nav>
 
-                <!-- Quick Command Badge -->
-                <div
-                    class="d-flex align-items-center gap-2 fs-7 vc-mono text-zinc-400 bg-zinc-900 px-3 py-1 rounded border border-zinc-800 shadow-sm vc-z1">
-                    <span>Engine:</span>
-                    <span class="text-zinc-200">FastAPI + Async BackgroundTasks</span>
-                </div>
-            </div>
+            <!-- Main Content Wrapper -->
+            <main class="vc-container">
+                <div class="d-flex flex-column gap-4 py-4">
 
-            <!-- Ingestion Grid -->
-            <div class="row g-3">
+                    <!-- Page Header -->
+                    <div
+                        class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 vc-border-bottom pb-3">
+                        <div>
+                            <h1 class="fs-4 fw-bold vc-track text-navy mb-0">Data Ingestion Pipelines</h1>
+                            <p class="fs-7 text-zinc-400 mt-1 mb-0">Configure environment datasets and trigger DuckDB
+                                columnar
+                                processing.</p>
+                        </div>
 
-                {% set cards = [
-                ('MI', 'MI Table', 'Parquet', 'file', './data/mi.parquet'),
-                ('NSC', 'NSC Table', 'Parquet', 'file', './data/nsc.parquet'),
-                ('SSR', 'SSR Table', 'Parquet', 'file', './data/ssr.parquet'),
-                ('sat_combined', 'SAT Combined', 'Parquet', 'file', './data/sat.parquet'),
-                ('fit_combined', 'FIT Combined', 'Parquet', 'file', './data/fit.parquet'),
-                ('MDM', 'MDM Master', 'CSV Dir', 'folder', './data/mdm_folder'),
-                ('MDS', 'MDS Master', 'CSV Dir', 'folder', './data/mds_folder'),
-                ('CP', 'CP Master', 'CSV Dir', 'folder', './data/cp_folder'),
-                ('lp', 'LP Raw Profiles', 'Datewise CSVs', 'folder', './data/lp_folder'),
-                ('dp', 'DP Raw Profiles', 'Datewise CSVs', 'folder', './data/dp_folder'),
-                ('bp', 'BP Raw Profiles', 'Datewise CSVs', 'folder', './data/bp_folder'),
-                ('rf', 'RF Table', 'CSV Dir', 'folder', './data/rf.csv')
-                ] %}
+                        <!-- Quick Command Badge -->
+                        <div
+                            class="d-flex align-items-center gap-2 fs-7 vc-mono text-zinc-400 bg-zinc-900 px-3 py-1 rounded border border-zinc-800 shadow-sm vc-z1">
+                            <span>Engine:</span>
+                            <span class="text-zinc-200">FastAPI + Async BackgroundTasks</span>
+                        </div>
+                    </div>
 
-                {% for key, label, fmt, input_type, placeholder in cards %}
-                <div class="col-12 col-md-6 col-lg-4 col-xl-3">
-                    <div class="glow-card d-flex flex-column justify-content-between h-100">
+                    <!-- Ingestion Grid -->
+                    <div class="row g-3">
 
-                        <!-- Interactive Mouse Spotlight Layer -->
-                        <div class="spotlight"></div>
+                        {% set cards = [
+                        ('MI', 'MI Table', 'Parquet', 'file', './data/mi.parquet'),
+                        ('NSC', 'NSC Table', 'Parquet', 'file', './data/nsc.parquet'),
+                        ('SSR', 'SSR Table', 'Parquet', 'file', './data/ssr.parquet'),
+                        ('sat_combined', 'SAT Combined', 'Parquet', 'file', './data/sat.parquet'),
+                        ('fit_combined', 'FIT Combined', 'Parquet', 'file', './data/fit.parquet'),
+                        ('MDM', 'MDM Master', 'CSV Dir', 'folder', './data/mdm_folder'),
+                        ('MDS', 'MDS Master', 'CSV Dir', 'folder', './data/mds_folder'),
+                        ('CP', 'CP Master', 'CSV Dir', 'folder', './data/cp_folder'),
+                        ('lp', 'LP Raw Profiles', 'Datewise CSVs', 'folder', './data/lp_folder'),
+                        ('dp', 'DP Raw Profiles', 'Datewise CSVs', 'folder', './data/dp_folder'),
+                        ('bp', 'BP Raw Profiles', 'Datewise CSVs', 'folder', './data/bp_folder'),
+                        ('rf', 'RF Table', 'CSV Dir', 'folder', './data/rf.csv')
+                        ] %}
 
-                        <div class="position-relative vc-z1">
-                            <!-- Card Top Meta -->
-                            <div class="d-flex align-items-center justify-content-between mb-3">
-                                <div class="d-flex align-items-center gap-2">
-                                    <!-- Distinct id target for HTMX OOB Swap -->
-                                    <span id="dot-{{ key }}" class="vc-dot"></span>
-                                    <h3 class="fs-7 fw-semibold vc-track text-navy mb-0">{{ label }}</h3>
+                        {% for key, label, fmt, input_type, placeholder in cards %}
+                        <div class="col-12 col-md-6 col-lg-4 col-xl-3">
+                            <div class="glow-card d-flex flex-column justify-content-between h-100">
+
+                                <!-- Interactive Mouse Spotlight Layer -->
+                                <div class="spotlight"></div>
+
+                                <div class="position-relative vc-z1">
+                                    <!-- Card Top Meta -->
+                                    <div class="d-flex align-items-center justify-content-between mb-3">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <!-- Distinct id target for HTMX OOB Swap -->
+                                            <span id="dot-{{ key }}" class="vc-dot"></span>
+                                            <h3 class="fs-7 fw-semibold vc-track text-navy mb-0">{{ label }}</h3>
+                                        </div>
+                                        <span
+                                            class="text-10 vc-mono text-zinc-400 text-uppercase px-1 py-0 rounded-1 border border-zinc-700 bg-zinc-800-80">
+                                            {{ fmt }}
+                                        </span>
+                                    </div>
+
+                                    <!-- Ingestion Form -->
+                                    <form hx-post="/ingest/{{ key }}" hx-target="#status-{{ key }}"
+                                        hx-indicator="#ind-{{ key }}" class="d-flex flex-column gap-2">
+                                        <input type="text"
+                                            name="{{ 'file_path' if input_type == 'file' else 'folder_path' }}"
+                                            placeholder="{{ placeholder }}" required class="vc-input px-2 py-1">
+
+                                        <button type="submit"
+                                            class="vc-btn w-100 d-flex align-items-center justify-content-center gap-1">
+                                            <span>Create {{ label }}</span>
+                                            <span id="ind-{{ key }}" class="htmx-indicator animate-spin">🌀</span>
+                                        </button>
+                                    </form>
                                 </div>
-                                <span
-                                    class="text-10 vc-mono text-zinc-400 text-uppercase px-1 py-0 rounded-1 border border-zinc-700 bg-zinc-800-80">
-                                    {{ fmt }}
-                                </span>
+
+                                <!-- Status Bar -->
+                                <div id="status-{{ key }}"
+                                    class="d-flex align-items-center justify-content-between vc-mono text-11 text-zinc-400 mt-3 pt-2 vc-border-top">
+                                    <span>State</span>
+                                    <span
+                                        class="text-zinc-400 bg-zinc-800 px-1 py-0 rounded-1 border border-zinc-700 text-10">idle</span>
+                                </div>
                             </div>
+                        </div>
+                        {% endfor %}
 
-                            <!-- Ingestion Form -->
-                            <form hx-post="/ingest/{{ key }}" hx-target="#status-{{ key }}" hx-indicator="#ind-{{ key }}"
-                                class="d-flex flex-column gap-2">
-                                <input type="text" name="{{ 'file_path' if input_type == 'file' else 'folder_path' }}"
-                                    placeholder="{{ placeholder }}" required class="vc-input px-2 py-1">
+                    </div>
 
-                                <button type="submit" class="vc-btn w-100 d-flex align-items-center justify-content-center gap-1">
-                                    <span>Create {{ label }}</span>
-                                    <span id="ind-{{ key }}" class="htmx-indicator animate-spin">🌀</span>
-                                </button>
-                            </form>
+                    <!-- Vercel Command Banner (Audit Execution with Spotlight Overlay) -->
+                    <div
+                        class="glow-card glow-banner d-flex flex-column flex-md-row align-items-center justify-content-between gap-4">
+
+                        <div class="spotlight spotlight-lg"></div>
+
+                        <div class="d-flex flex-column gap-1 position-relative vc-z1">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="w-2 h-2 rounded-circle bg-emerald-400 animate-pulse"></span>
+                                <h2 class="fs-6 fw-semibold vc-track text-navy mb-0">Run 8-Stage Audit Pipeline</h2>
+                            </div>
+                            <p class="fs-7 text-zinc-400 mb-0 vc-max-42 lh-sm">
+                                Executes master joining logic, strips serial prefixes, calculates date UNPIVOT ratios,
+                                and
+                                writes <code class="text-zinc-300 vc-mono">final_lp.csv</code>, <code
+                                    class="text-zinc-300 vc-mono">final_dp.csv</code>, and <code
+                                    class="text-zinc-300 vc-mono">final_bp.csv</code> to project root.
+                            </p>
                         </div>
 
-                        <!-- Status Bar -->
-                        <div id="status-{{ key }}"
-                            class="d-flex align-items-center justify-content-between vc-mono text-11 text-zinc-400 mt-3 pt-2 vc-border-top">
-                            <span>State</span>
-                            <span class="text-zinc-400 bg-zinc-800 px-1 py-0 rounded-1 border border-zinc-700 text-10">idle</span>
-                        </div>
+                        <button hx-post="/run-audit" hx-target="#audit-results" hx-indicator="#audit-spinner"
+                            class="btn vc-btn-navy btn-sm shadow position-relative vc-z1 d-inline-flex align-items-center gap-2 fw-semibold px-4 py-2">
+                            <span>Deploy Computation Logic</span>
+                            <span id="audit-spinner" class="htmx-indicator animate-spin">🌀</span>
+                        </button>
                     </div>
+
+                    <!-- Dynamic Output Container -->
+                    <div id="audit-results" class="d-flex flex-column gap-3"></div>
+
                 </div>
-                {% endfor %}
-
-            </div>
-
-            <!-- Vercel Command Banner (Audit Execution with Spotlight Overlay) -->
-            <div class="glow-card glow-banner d-flex flex-column flex-md-row align-items-center justify-content-between gap-4">
-
-                <div class="spotlight spotlight-lg"></div>
-
-                <div class="d-flex flex-column gap-1 position-relative vc-z1">
-                    <div class="d-flex align-items-center gap-2">
-                        <span class="w-2 h-2 rounded-circle bg-emerald-400 animate-pulse"></span>
-                        <h2 class="fs-6 fw-semibold vc-track text-navy mb-0">Run 8-Stage Audit Pipeline</h2>
-                    </div>
-                    <p class="fs-7 text-zinc-400 mb-0 vc-max-42 lh-sm">
-                        Executes master joining logic, strips serial prefixes, calculates date UNPIVOT ratios, and
-                        writes <code class="text-zinc-300 vc-mono">final_lp.csv</code>, <code
-                            class="text-zinc-300 vc-mono">final_dp.csv</code>, and <code
-                            class="text-zinc-300 vc-mono">final_bp.csv</code> to project root.
-                    </p>
-                </div>
-
-                <button hx-post="/run-audit" hx-target="#audit-results" hx-indicator="#audit-spinner"
-                    class="btn vc-btn-navy btn-sm shadow position-relative vc-z1 d-inline-flex align-items-center gap-2 fw-semibold px-4 py-2">
-                    <span>Deploy  Computation Logic</span>
-                    <span id="audit-spinner" class="htmx-indicator animate-spin">🌀</span>
-                </button>
-            </div>
-
-            <!-- Dynamic Output Container -->
-            <div id="audit-results" class="d-flex flex-column gap-3"></div>
-
-        </div>
-    </main>
+            </main>
 
         </div>
         <!-- /Main Column -->

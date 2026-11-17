@@ -1,6 +1,6 @@
 fastapi
-uvicorn[standard]
+uvicorn
 duckdb
 jinja2
+itsdangerous
 python-multipart
-aiofiles
