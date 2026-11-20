@@ -14,6 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from routes_debug import get_debug_router
 from routes_mds_missing import get_mds_missing_router
+from test import 
 
 # Use Pathlib for reliable cross-platform base path resolution
 BASE_DIR = Path(__file__).resolve().parent
@@ -958,4 +959,4 @@ async def download_csv(request: Request, table_key: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000)
+    uvicorn.run("app:app", host="127.0.0.1", port=8000)
