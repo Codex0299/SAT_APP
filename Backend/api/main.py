@@ -1,5 +1,4 @@
 import glob
-import hashlib
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
@@ -7,36 +6,52 @@ import uuid
 
 import duckdb
 from fastapi import BackgroundTasks, FastAPI, Form, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 from starlette.middleware.sessions import SessionMiddleware
 
-from routes_debug import get_debug_router
-from routes_mds_missing import get_mds_missing_router
-from test import 
+# If this file is at SAT-APP/backend/api/main.py:
+# parents[0] = api, parents[1] = backend, parents[2] = SAT-APP
+API_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = API_DIR.parent
+SAT_APP_DIR = Path(os.getenv("SAT_APP_ROOT", BACKEND_DIR.parent))
 
-# Use Pathlib for reliable cross-platform base path resolution
-BASE_DIR = Path(__file__).resolve().parent
-TEMPLATES_PATH = BASE_DIR / "templates"
-USER_DBS_DIR = BASE_DIR / "user_databases"
-USER_DBS_DIR.mkdir(exist_ok=True)
+DATABASE_DIR = Path(os.getenv("DATABASE_DIR", SAT_APP_DIR / "database"))
+USER_DBS_DIR = Path(os.getenv("DUCKDB_DATA_DIR", DATABASE_DIR / "duckdb_data"))
+PARQUET_DIR = Path(os.getenv("PARQUET_DIR", DATABASE_DIR / "parquet"))
+CSV_DIR = Path(os.getenv("CSV_DIR", DATABASE_DIR / "csv"))
+XLS_DIR = Path(os.getenv("XLS_DIR", DATABASE_DIR / "xls"))
 
-app = FastAPI()
-# Secret key for signed session cookies
-app.add_middleware(SessionMiddleware,
-                   secret_key="change-this-secret-key-in-prod")
+USER_DBS_DIR.mkdir(parents=True, exist_ok=True)
+PARQUET_DIR.mkdir(parents=True, exist_ok=True)
+CSV_DIR.mkdir(parents=True, exist_ok=True)
+XLS_DIR.mkdir(parents=True, exist_ok=True)
 
-templates = Jinja2Templates(directory=str(TEMPLATES_PATH))
+app = FastAPI(title="SAT Reconciliation API")
 
-app.mount(
-    "/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static"
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SESSION_SECRET_KEY",
+                         "change-this-secret-key-in-prod"),
 )
 
-# Task progress tracker store
+# Allow frontend on port 8000 (or configured origin) to call backend API on port 8001
+frontend_origin = os.getenv("FRONTEND_ORIGIN", "http://127.0.0.4:8000")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        frontend_origin,
+        "http://127.0.0.4:8000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 PROGRESS_STORE: Dict[str, Dict[str, Any]] = {}
 
-# Map of exact required datasets and their schema tables
 DATASET_CONFIG = {
     "MI": {"table": "MI", "type": "parquet"},
     "NSC": {"table": "NSC", "type": "parquet"},
@@ -53,96 +68,41 @@ DATASET_CONFIG = {
 }
 
 
-# ==========================================
-# 🔐 AUTH & PER-USER DISK DB HELPERS
-# ==========================================
-
-AUTH_DB_PATH = (BASE_DIR / "auth_users.duckdb").as_posix()
-
-
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
-
-
-def init_auth_db():
-    """Creates the users registry DB and seeds default admin if empty."""
-    conn = duckdb.connect(database=AUTH_DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            username VARCHAR PRIMARY KEY,
-            password_hash VARCHAR NOT NULL,
-            role VARCHAR NOT NULL DEFAULT 'user',
-            db_filename VARCHAR NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-    existing = conn.execute(
-        "SELECT COUNT(*) FROM users WHERE username = 'admin'"
-    ).fetchone()[0]
-    if existing == 0:
-        conn.execute(
-            "INSERT INTO users (username, password_hash, role, db_filename) VALUES (?, ?, ?, ?)",
-            ["admin", hash_password("admin123"), "admin", "user_admin.duckdb"],
-        )
-    conn.close()
-
-
-init_auth_db()
-
-
 def normalize_path(raw_path: Union[str, Path]) -> str:
-    """Utility to convert any raw path string or Path object into standard POSIX format for DuckDB."""
+    """Converts raw path strings or Path objects into POSIX format for DuckDB."""
     if not raw_path:
         return ""
     clean_path = str(raw_path).strip('\'" ').strip()
     return Path(clean_path).as_posix()
 
 
+def escape_sql_str(value: str) -> str:
+    return value.replace("'", "''")
+
+
 def get_user_db_path(username: str) -> str:
-    """Returns the unique physical DuckDB file path on disk for a specific logged-in user."""
     safe_user = "".join(c for c in username if c.isalnum() or c in ("_", "-"))
     return normalize_path(USER_DBS_DIR / f"user_{safe_user}.duckdb")
 
 
 def get_user_db_connection(username: str):
-    """Opens a disk-backed DuckDB connection isolated to the user."""
     db_path = get_user_db_path(username)
     conn = duckdb.connect(database=db_path)
     conn.execute("PRAGMA memory_limit='2GB';")
     return conn
 
 
-class UserDatabaseProxy:
-    """A proxy connection that dynamically opens the active user's disk-backed DuckDB."""
-
-    def __init__(self, app_instance):
-        self.app_instance = app_instance
-
-    def _get_active_conn(self):
-        # Fallback to admin if no user is currently bound in the context
-        return get_user_db_connection("admin")
-
-    def execute(self, query, parameters=None):
-        conn = self._get_active_conn()
-        try:
-            return conn.execute(query, parameters)
-        finally:
-            conn.close()
-
-    def cursor(self):
-        return self.execute
-
-
-def get_current_user(request: Request) -> Optional[Dict[str, str]]:
-    username = request.session.get("username")
-    role = request.session.get("role")
+def get_current_user(request: Request, form_username: Optional[str] = None) -> Optional[Dict[str, str]]:
+    """Reads session user if shared cookie/domain is active, or falls back to explicit user param."""
+    username = request.session.get("username") or (
+        form_username.strip() if form_username else None)
+    role = request.session.get("role") or "user"
     if not username:
         return None
-    return {"username": username, "role": role}
-
-
-app.include_router(get_debug_router())
-app.include_router(get_mds_missing_router())
+    clean_user = "".join(c for c in username if c.isalnum() or c in ("_", "-"))
+    if not clean_user:
+        return None
+    return {"username": clean_user, "role": role}
 
 
 def update_progress(
@@ -150,9 +110,8 @@ def update_progress(
     percent: int,
     status: str,
     result_html: str = "",
-    error: str = None,
+    error: Optional[str] = None,
 ):
-    """Updates global task state for HTMX polling."""
     PROGRESS_STORE[task_id] = {
         "percent": min(percent, 100),
         "status": status,
@@ -192,18 +151,18 @@ def bg_ingest_file_or_folder(
     task_id: str,
     username: str,
     dataset_key: str,
-    file_path: str = None,
-    folder_path: str = None,
+    file_path: Optional[str] = None,
+    folder_path: Optional[str] = None,
+    cleanup_temp: bool = False,
 ):
-    """Background worker function for file/folder ingestion into the user's disk DuckDB."""
     db = None
+    norm_file = normalize_path(file_path) if file_path else None
+    norm_folder = normalize_path(folder_path) if folder_path else None
+
     try:
         db = get_user_db_connection(username)
         config = DATASET_CONFIG[dataset_key]
         table_name = config["table"]
-
-        norm_folder = normalize_path(folder_path) if folder_path else None
-        norm_file = normalize_path(file_path) if file_path else None
 
         update_progress(
             task_id, 10, f"Preparing target table <code>{table_name}</code> on disk..."
@@ -214,8 +173,9 @@ def bg_ingest_file_or_folder(
             update_progress(
                 task_id, 40, f"Reading Parquet file for {table_name}..."
             )
+            safe_file = escape_sql_str(norm_file)
             db.execute(
-                f"CREATE TABLE {table_name} AS SELECT * FROM read_parquet('{norm_file}')"
+                f"CREATE TABLE {table_name} AS SELECT * FROM read_parquet('{safe_file}')"
             )
             update_progress(task_id, 90, "Finalizing table structure...")
 
@@ -247,6 +207,7 @@ def bg_ingest_file_or_folder(
 
             for idx, fpath in enumerate(all_files, start=1):
                 clean_fpath = normalize_path(fpath)
+                safe_fpath = escape_sql_str(clean_fpath)
                 pct = int(20 + ((idx / total_files) * 75))
                 update_progress(
                     task_id,
@@ -256,12 +217,20 @@ def bg_ingest_file_or_folder(
 
                 if idx == 1:
                     db.execute(
-                        f"CREATE TABLE {table_name} AS SELECT * FROM read_csv_auto('{clean_fpath}', union_by_name=true, ignore_errors=true)"
+                        f"CREATE TABLE {table_name} AS SELECT * FROM read_csv_auto('{safe_fpath}', union_by_name=true, ignore_errors=true)"
                     )
                 else:
                     db.execute(
-                        f"INSERT INTO {table_name} BY NAME SELECT * FROM read_csv_auto('{clean_fpath}', union_by_name=true, ignore_errors=true)"
+                        f"INSERT INTO {table_name} BY NAME SELECT * FROM read_csv_auto('{safe_fpath}', union_by_name=true, ignore_errors=true)"
                     )
+        else:
+            update_progress(
+                task_id,
+                100,
+                "",
+                error="Missing valid file or folder path for ingestion.",
+            )
+            return
 
         count = db.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
 
@@ -279,19 +248,24 @@ def bg_ingest_file_or_folder(
     finally:
         if db:
             db.close()
+        if cleanup_temp and norm_file:
+            temp_obj = Path(norm_file)
+            if temp_obj.exists():
+                try:
+                    temp_obj.unlink()
+                except Exception as e:
+                    print(f"Warning cleaning up temp file {temp_obj}: {e}")
 
 
 def bg_build_reconciliation_output(task_id: str, username: str):
-    """Executes the reconciliation pipeline inside the logged-in user's physical DB."""
+    """Executes the 8-stage reconciliation pipeline and writes exports to database/csv/<user>/."""
     db = None
     try:
         db = get_user_db_connection(username)
 
-        # User-specific export folder so downloads don't overwrite other users
-        user_export_dir = BASE_DIR / "exports" / username
+        user_export_dir = CSV_DIR / username
         user_export_dir.mkdir(parents=True, exist_ok=True)
 
-        # Step 1: Drop indexes & Base WFM creation from SSR
         update_progress(
             task_id,
             10,
@@ -316,7 +290,6 @@ def bg_build_reconciliation_output(task_id: str, username: str):
             FROM SSR;
         """)
 
-        # Step 2: Merge NSC and MI records
         update_progress(
             task_id, 25, "Stage 2/8: Merging Approved NSC & MI records into WFM..."
         )
@@ -340,7 +313,6 @@ def bg_build_reconciliation_output(task_id: str, username: str):
             );
         """)
 
-        # Step 3: Filter SAT records
         update_progress(
             task_id, 40, "Stage 3/8: Indexing SAT table & removing matching records..."
         )
@@ -353,7 +325,6 @@ def bg_build_reconciliation_output(task_id: str, username: str):
                OR EXISTS (SELECT 1 FROM sat s WHERE s."meter no" = w.METER_NUMBER);
         """)
 
-        # Step 4: Filter FIT records
         update_progress(
             task_id, 50, "Stage 4/8: Indexing FIT table & removing matching records..."
         )
@@ -430,9 +401,9 @@ def bg_build_reconciliation_output(task_id: str, username: str):
         """)
 
         db.execute(
-            "CREATE OR REPLACE TABLE WFM AS SELECT * FROM WFM_raw WHERE MDM_STATUS = 'Approve'")
+            "CREATE OR REPLACE TABLE WFM AS SELECT * FROM WFM_raw WHERE MDM_STATUS = 'Approve'"
+        )
 
-        # Step 5: MDM, MDS, CP validation filtering
         update_progress(
             task_id,
             65,
@@ -458,7 +429,6 @@ def bg_build_reconciliation_output(task_id: str, username: str):
             );
         """)
 
-        # Step 6: Clean meter serial strings
         update_progress(
             task_id,
             75,
@@ -475,14 +445,12 @@ def bg_build_reconciliation_output(task_id: str, username: str):
             SELECT *, REGEXP_REPLACE(devicename, '^(ISK|LNT)[-_]?', '', 'i') AS meter_no FROM bp;
         """)
 
-        # Step 7: Unpivot and calculate Final DP, LP, BP metrics
         update_progress(
             task_id,
             85,
             "Stage 7/8: Unpivoting date columns and calculating completion ratios...",
         )
         db.execute("""
-            -- Final DP
             CREATE OR REPLACE TABLE Final_DP AS
             WITH dp_unpivoted AS (
                 UNPIVOT DP_clean
@@ -499,7 +467,6 @@ def bg_build_reconciliation_output(task_id: str, username: str):
             LEFT JOIN DP_clean dp ON w.METER_NUMBER = dp.meter_no
             LEFT JOIN dp_aggregated a ON dp.meter_no = a.meter_no AND dp.type IS NOT DISTINCT FROM a.type;
 
-            -- Final LP
             CREATE OR REPLACE TABLE raw_lp AS
             WITH lp_unpivoted AS (
                 UNPIVOT LP_clean
@@ -516,7 +483,6 @@ def bg_build_reconciliation_output(task_id: str, username: str):
             LEFT JOIN LP_clean lp ON w.METER_NUMBER = lp.meter_no
             LEFT JOIN lp_aggregated a ON lp.meter_no = a.meter_no;
 
-            -- Final BP
             CREATE OR REPLACE TABLE Final_BP AS
             WITH bp_unpivoted AS (
                 UNPIVOT BP_clean
@@ -562,7 +528,6 @@ def bg_build_reconciliation_output(task_id: str, username: str):
             );
         """)
 
-        # Step 8: Exporting CSV files & Final Cleanup
         update_progress(
             task_id,
             95,
@@ -575,22 +540,21 @@ def bg_build_reconciliation_output(task_id: str, username: str):
             "sat_eligible_stuck": "sat_eligible_stuck.csv",
         }
         for table, filename in exports.items():
-            output_path = normalize_path(user_export_dir / filename)
+            output_path = escape_sql_str(
+                normalize_path(user_export_dir / filename))
             db.execute(
                 f"COPY {table} TO '{output_path}' (HEADER, DELIMITER ',')"
             )
 
         drop_all_indexes(db)
 
-        temp_tables = ["LP_clean", "DP_clean", "BP_clean", "WFM"]
-        for tbl in temp_tables:
+        for tbl in ["LP_clean", "DP_clean", "BP_clean", "WFM"]:
             db.execute(f"DROP TABLE IF EXISTS {tbl}")
 
         db.execute("CHECKPOINT;")
 
-        columns = [
-            col[0] for col in db.execute("DESCRIBE Final_DP").fetchall()
-        ]
+        columns = [col[0]
+                   for col in db.execute("DESCRIBE Final_DP").fetchall()]
         rows = db.execute("SELECT * FROM Final_DP LIMIT 100").fetchall()
 
         header = "".join([f'<th class="vc-th">{c}</th>' for c in columns])
@@ -633,185 +597,17 @@ def bg_build_reconciliation_output(task_id: str, username: str):
 
 
 # ==========================================
-# 🔐 LOGIN & ADMIN USER MANAGEMENT ROUTES
+# 🚀 API ENDPOINTS
 # ==========================================
 
 
-@app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    return templates.TemplateResponse(
-        request=request, name="login.html", context={"error": None}
-    )
-
-
-@app.post("/login", response_class=HTMLResponse)
-async def login_submit(
-    request: Request, username: str = Form(...), password: str = Form(...)
-):
-    conn = duckdb.connect(database=AUTH_DB_PATH)
-    user = conn.execute(
-        "SELECT username, password_hash, role FROM users WHERE username = ?",
-        [username.strip()],
-    ).fetchone()
-    conn.close()
-
-    if not user or user[1] != hash_password(password):
-        return templates.TemplateResponse(
-            request=request,
-            name="login.html",
-            context={"error": "Invalid username or password."},
-        )
-
-    # Save user session
-    request.session["username"] = user[0]
-    request.session["role"] = user[2]
-
-    # Touch/Create the user's isolated disk-backed DuckDB immediately on login
-    user_db = get_user_db_connection(user[0])
-    user_db.close()
-
-    return RedirectResponse(url="/", status_code=303)
-
-
-@app.get("/logout")
-async def logout(request: Request):
-    request.session.clear()
-    return RedirectResponse(url="/login", status_code=303)
-
-
-@app.get("/admin", response_class=HTMLResponse)
-async def admin_dashboard(request: Request):
-    current_user = get_current_user(request)
-    if not current_user or current_user["role"] != "admin":
-        return RedirectResponse(url="/login", status_code=303)
-
-    conn = duckdb.connect(database=AUTH_DB_PATH)
-    users_rows = conn.execute(
-        "SELECT username, role, db_filename, created_at FROM users ORDER BY created_at DESC"
-    ).fetchall()
-    conn.close()
-
-    users = []
-    for row in users_rows:
-        db_file = USER_DBS_DIR / row[2]
-        size_mb = (
-            round(db_file.stat().st_size / (1024 * 1024), 2)
-            if db_file.exists()
-            else 0.0
-        )
-        users.append({
-            "username": row[0],
-            "role": row[1],
-            "db_filename": row[2],
-            "created_at": str(row[3])[:19],
-            "db_size_mb": size_mb,
-        })
-
-    return templates.TemplateResponse(
-        request=request,
-        name="admin.html",
-        context={
-            "current_user": current_user,
-            "users": users,
-            "msg": request.query_params.get("msg"),
-            "err": request.query_params.get("err"),
-        },
-    )
-
-
-@app.post("/admin/add-user")
-async def admin_add_user(
-    request: Request,
-    new_username: str = Form(...),
-    new_password: str = Form(...),
-    role: str = Form("user"),
-):
-    current_user = get_current_user(request)
-    if not current_user or current_user["role"] != "admin":
-        return RedirectResponse(url="/login", status_code=303)
-
-    clean_user = "".join(
-        c for c in new_username.strip() if c.isalnum() or c in ("_", "-")
-    )
-    if not clean_user or not new_password.strip():
-        return RedirectResponse(
-            url="/admin?err=Username+and+password+are+required", status_code=303
-        )
-
-    db_filename = f"user_{clean_user}.duckdb"
-    conn = duckdb.connect(database=AUTH_DB_PATH)
-    exists = conn.execute(
-        "SELECT COUNT(*) FROM users WHERE username = ?", [clean_user]
-    ).fetchone()[0]
-
-    if exists > 0:
-        conn.close()
-        return RedirectResponse(
-            url="/admin?err=User+already+exists", status_code=303
-        )
-
-    conn.execute(
-        "INSERT INTO users (username, password_hash, role, db_filename) VALUES (?, ?, ?, ?)",
-        [clean_user, hash_password(new_password.strip()), role, db_filename],
-    )
-    conn.close()
-
-    # Pre-create the physical DuckDB file on disk for this new user
-    u_conn = get_user_db_connection(clean_user)
-    u_conn.close()
-
-    return RedirectResponse(
-        url=f"/admin?msg=User+{clean_user}+created+successfully", status_code=303
-    )
-
-
-@app.post("/admin/delete-user/{target_username}")
-async def admin_delete_user(request: Request, target_username: str):
-    current_user = get_current_user(request)
-    if not current_user or current_user["role"] != "admin":
-        return RedirectResponse(url="/login", status_code=303)
-
-    if target_username == "admin":
-        return RedirectResponse(
-            url="/admin?err=Cannot+delete+primary+admin+account", status_code=303
-        )
-
-    conn = duckdb.connect(database=AUTH_DB_PATH)
-    conn.execute("DELETE FROM users WHERE username = ?", [target_username])
-    conn.close()
-
-    # Remove their physical DuckDB file from disk to free space
-    db_file = Path(get_user_db_path(target_username))
-    if db_file.exists():
-        try:
-            db_file.unlink()
-        except Exception as e:
-            print(f"Warning deleting DB file: {e}")
-
-    return RedirectResponse(
-        url=f"/admin?msg=User+{target_username}+and+their+database+removed",
-        status_code=303,
-    )
-
-
-# ==========================================
-# 🌐 MAIN APP ROUTES (PROTECTED BY LOGIN)
-# ==========================================
-
-
-@app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=303)
-    return templates.TemplateResponse(
-        request=request, name="index.html", context={"user": user}
-    )
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "service": "sat-backend-api"}
 
 
 @app.get("/progress/{task_id}", response_class=HTMLResponse)
 async def get_progress(task_id: str):
-    """HTMX Polling endpoint that returns status/progress bar or final output."""
     task = PROGRESS_STORE.get(task_id)
 
     if not task:
@@ -849,11 +645,10 @@ async def get_progress(task_id: str):
 async def handle_ingestion(
     dataset_key: str, request: Request, bg_tasks: BackgroundTasks
 ):
-    user = get_current_user(request)
+    form = await request.form()
+    user = get_current_user(request, form_username=form.get("username"))
     if not user:
         return '<p class="text-red-400 fs-8">Session expired. Please refresh and log in.</p>'
-
-    form = await request.form()
 
     if dataset_key not in DATASET_CONFIG:
         return '<p class="text-red-400 fs-8">Invalid Dataset Key</p>'
@@ -875,10 +670,11 @@ async def handle_ingestion(
                 username,
                 dataset_key,
                 file_path=clean_path,
+                cleanup_temp=False,
             )
 
         elif file and getattr(file, "filename", None):
-            temp_path = BASE_DIR / f"temp_{username}_{file.filename}"
+            temp_path = PARQUET_DIR / f"temp_{username}_{file.filename}"
             with open(temp_path, "wb") as f:
                 f.write(await file.read())
             bg_tasks.add_task(
@@ -887,6 +683,7 @@ async def handle_ingestion(
                 username,
                 dataset_key,
                 file_path=str(temp_path),
+                cleanup_temp=True,
             )
         else:
             return '<p class="text-amber-300 fs-8 vc-mono">No file or path provided.</p>'
@@ -910,7 +707,9 @@ async def handle_ingestion(
 
 @app.post("/run-audit", response_class=HTMLResponse)
 async def run_audit(request: Request, bg_tasks: BackgroundTasks):
-    user = get_current_user(request)
+    form = await request.form() if request.headers.get("content-type", "").startswith("application/x-www-form-urlencoded") or request.headers.get("content-type", "").startswith("multipart/form-data") else {}
+    form_user = form.get("username") if hasattr(form, "get") else None
+    user = get_current_user(request, form_username=form_user)
     if not user:
         return '<p class="text-red-400 fs-8">Session expired. Please log in.</p>'
 
@@ -925,10 +724,13 @@ async def run_audit(request: Request, bg_tasks: BackgroundTasks):
 
 
 @app.get("/download-csv/{table_key}")
-async def download_csv(request: Request, table_key: str):
-    user = get_current_user(request)
+async def download_csv(request: Request, table_key: str, username: Optional[str] = None):
+    user = get_current_user(request, form_username=username)
     if not user:
-        return RedirectResponse(url="/login", status_code=303)
+        return HTMLResponse(
+            '<p class="text-red-400 fs-8">Unauthorized download request.</p>',
+            status_code=401,
+        )
 
     valid_tables = {
         "lp": "final_lp.csv",
@@ -943,7 +745,7 @@ async def download_csv(request: Request, table_key: str):
         )
 
     file_name = valid_tables[table_key]
-    file_path = BASE_DIR / "exports" / user["username"] / file_name
+    file_path = CSV_DIR / user["username"] / file_name
 
     if not file_path.exists():
         return HTMLResponse(
@@ -959,4 +761,4 @@ async def download_csv(request: Request, table_key: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="127.0.0.1", port=8000)
+    uvicorn.run("api.main:app", host="127.0.0.4", port=8001, reload=False)
